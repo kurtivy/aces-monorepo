@@ -130,6 +130,124 @@ export function predictCloneDeterministicAddress(
 // which uses a fixed init code pattern for all clones
 
 /**
+ * Mine vanity salt for fixed supply ERC20 token using direct CREATE2 deployment
+ * @param userAddress The address that will deploy the contract
+ * @param tokenName Token name
+ * @param tokenSymbol Token symbol
+ * @param creator Address that will receive all tokens
+ * @param deployerAddress The CREATE2Deployer contract address
+ * @param bytecode The contract bytecode (with constructor parameters)
+ * @param options Mining options
+ * @returns Salt mining result with predicted address
+ */
+export async function mineVanitySaltFixedSupply(
+  userAddress: string,
+  tokenName: string,
+  tokenSymbol: string,
+  creator: string,
+  deployerAddress: string,
+  bytecode: string,
+  options: SaltMiningOptions,
+): Promise<SaltMiningResult> {
+  const { targetSuffix, maxAttempts, onProgress } = options;
+  const startTime = Date.now();
+
+  // Import the prediction function
+  const { predictFixedSupplyTokenAddress } = await import(
+    '@/lib/contracts/fixed-supply-deployment'
+  );
+
+  for (let attempts = 0; attempts < maxAttempts; attempts++) {
+    // Create unique salt using multiple randomness sources
+    const timestamp = Date.now();
+    const random1 = Math.floor(Math.random() * 1000000);
+    const random2 = Math.floor(Math.random() * 1000000);
+    const nonce = attempts;
+
+    const salt = `${userAddress}-${tokenName}-${tokenSymbol}-${timestamp}-${random1}-${random2}-${nonce}`;
+
+    // Predict CREATE2 address for fixed supply token
+    const predictedAddress = predictFixedSupplyTokenAddress(
+      salt,
+      deployerAddress,
+      tokenName,
+      tokenSymbol,
+      creator,
+      bytecode,
+    );
+
+    // Check if the lowercase address ends with the target suffix (in lowercase)
+    if (predictedAddress.toLowerCase().endsWith(targetSuffix.toLowerCase())) {
+      // Apply proper checksumming to the final address
+      const checksummedAddress = ethers.utils.getAddress(predictedAddress);
+
+      // Check that the checksummed address ends with the exact target suffix (with correct case)
+      if (checksummedAddress.endsWith(targetSuffix)) {
+        return {
+          salt,
+          predictedAddress: checksummedAddress,
+          attempts: attempts + 1,
+          timeElapsed: Date.now() - startTime,
+        };
+      }
+      // If checksumming didn't produce the desired case, continue mining
+    }
+
+    // Report progress every 250 attempts
+    if (attempts % 250 === 0 && onProgress) {
+      onProgress(attempts + 1, Date.now() - startTime);
+    }
+
+    // Yield control to prevent UI blocking
+    if (attempts % 100 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  throw new Error(
+    `Could not find vanity address ending in "${targetSuffix}" after ${maxAttempts} attempts`,
+  );
+}
+
+/**
+ * Mine vanity salt for fixed supply token with timeout
+ */
+export async function mineVanitySaltFixedSupplyWithTimeout(
+  userAddress: string,
+  tokenName: string,
+  tokenSymbol: string,
+  creator: string,
+  deployerAddress: string,
+  bytecode: string,
+  options: SaltMiningOptions,
+  timeoutMs: number = 300000, // 5 minutes
+): Promise<SaltMiningResult> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Vanity mining timed out after ${timeoutMs / 1000} seconds`));
+    }, timeoutMs);
+
+    mineVanitySaltFixedSupply(
+      userAddress,
+      tokenName,
+      tokenSymbol,
+      creator,
+      deployerAddress,
+      bytecode,
+      options,
+    )
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+}
+
+/**
  * Mine vanity salt with timeout and fallback
  */
 export async function mineVanitySaltWithTimeout(

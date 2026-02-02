@@ -1,29 +1,12 @@
 import type { ApiResponse } from '@aces/utils';
 
 function getDexApiBaseUrl(): string {
-  // Use environment variable if available
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // For localhost development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:3002';
-  }
-
-  // Dynamic URL based on current deployment
+  // Use relative paths for Next.js API routes
   if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const href = window.location.href;
-
-    // Check for dev/git-dev branch
-    if (href.includes('git-dev') || hostname.includes('git-dev')) {
-      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-    }
+    return ''; // Relative path - Next.js will handle routing
   }
-
-  // Production fallback (main branch and aces.fun)
-  return 'https://acesbackend-production.up.railway.app';
+  // Server-side: use absolute URL if needed, otherwise relative
+  return process.env.NEXT_PUBLIC_API_URL || '';
 }
 
 const API_BASE_URL = getDexApiBaseUrl();
@@ -105,7 +88,9 @@ export interface ApiFailure {
 export type ApiResult<T> = ApiSuccess<T> | ApiFailure;
 
 async function request<T>(endpoint: string): Promise<ApiResult<T>> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Use simplified Next.js API route (no /v1)
+  const normalizedEndpoint = endpoint.replace('/api/v1/', '/api/');
+  const url = `${API_BASE_URL}${normalizedEndpoint}`;
 
   try {
     const response = await fetch(url, {
@@ -157,8 +142,17 @@ async function request<T>(endpoint: string): Promise<ApiResult<T>> {
 }
 
 export class DexApi {
-  static getPool(tokenAddress: string) {
-    return request<DexPoolResponse>(`/api/v1/dex/${tokenAddress}/pool`);
+  /**
+   * Get DEX pool state. Pass poolAddress when available - token address alone
+   * often 404s for Slipstream/V3 pools that aren't resolvable via factory.
+   */
+  static getPool(tokenAddress: string, options?: { poolAddress?: string }) {
+    const params = new URLSearchParams();
+    if (options?.poolAddress) {
+      params.set('poolAddress', options.poolAddress);
+    }
+    const query = params.toString();
+    return request<DexPoolResponse>(`/api/v1/dex/${tokenAddress}/pool${query ? `?${query}` : ''}`);
   }
 
   static getCandles(tokenAddress: string, resolution: string, lookbackMinutes?: number) {

@@ -36,8 +36,7 @@ export function useStreamWindow(): UseStreamWindowReturn {
       // Analytics tracking
       trackStreamWindowEvent('closed', { windowState });
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      fetch(`${apiUrl}/api/v1/twitch/analytics`, {
+      fetch('/api/twitch/analytics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,8 +255,7 @@ export function useStreamWindow(): UseStreamWindowReturn {
         // Analytics tracking
         trackStreamWindowEvent('opened', { windowState: { ...windowState, isOpen: true } });
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-        fetch(`${apiUrl}/api/v1/twitch/analytics`, {
+        fetch('/api/twitch/analytics', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

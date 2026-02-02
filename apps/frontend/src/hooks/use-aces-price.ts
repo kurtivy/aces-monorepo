@@ -18,15 +18,12 @@ export function useAcesPrice(): AcesPriceData {
 
   const fetchAcesPrice = useCallback(async () => {
     try {
-      // Determine API base URL
+      // Use relative path for Next.js API route (no /v1)
       const apiBaseUrl =
-        process.env.NEXT_PUBLIC_API_URL ||
-        (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-          ? 'http://localhost:3002'
-          : 'https://acesbackend-production.up.railway.app');
+        typeof window !== 'undefined' ? '' : process.env.NEXT_PUBLIC_API_URL || '';
 
-      // Fetch from backend API endpoint
-      const response = await fetch(`${apiBaseUrl}/api/v1/prices/aces-usd`, {
+      // Fetch from Next.js API endpoint
+      const response = await fetch(`${apiBaseUrl}/api/prices/aces-usd`, {
         headers: {
           Accept: 'application/json',
         },

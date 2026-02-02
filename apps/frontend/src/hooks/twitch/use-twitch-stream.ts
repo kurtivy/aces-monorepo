@@ -24,8 +24,7 @@ export function useTwitchStream(channelName: string): UseTwitchStreamReturn {
     try {
       setStreamStatus((prev) => ({ ...prev, loading: true, error: null }));
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiUrl}/api/v1/twitch/stream-status/${channelName}`);
+      const response = await fetch(`/api/twitch/stream-status/${channelName}`);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

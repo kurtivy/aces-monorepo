@@ -2,7 +2,7 @@
 
 import { useBondingData } from '@/contexts/bonding-data-context';
 
-const BASE_MAINNET_CHAIN_ID = 8453;
+const DEFAULT_CHAIN_ID = 8453; // Base Mainnet
 
 interface BondingData {
   // Raw contract data
@@ -54,7 +54,7 @@ export function useTokenBondingData(
   chainId?: number,
 ): BondingData {
   // Use the new subscription-based hook
-  const tokenState = useBondingData(tokenAddress, chainId || BASE_MAINNET_CHAIN_ID);
+  const tokenState = useBondingData(tokenAddress, chainId || DEFAULT_CHAIN_ID);
 
   if (!tokenAddress) {
     return EMPTY_BONDING_DATA;

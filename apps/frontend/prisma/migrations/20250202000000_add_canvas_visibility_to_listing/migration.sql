@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "listings" ADD COLUMN "showOnCanvas" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "listings" ADD COLUMN "isFeatured" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "listings" ADD COLUMN "showOnDrops" BOOLEAN NOT NULL DEFAULT false;

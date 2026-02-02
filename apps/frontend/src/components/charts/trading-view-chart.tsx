@@ -600,29 +600,29 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         try {
           chartContainerRef.current.classList.add('aces-tv-dark-skin');
 
-          const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+          // Use frontend origin so chart fetch goes to Next.js API route (same-origin); route proxies to backend
+          const apiBaseUrl =
+            typeof window !== 'undefined'
+              ? ''
+              : process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
           const wsUrl = (() => {
             if (process.env.NEXT_PUBLIC_WS_URL) {
               return process.env.NEXT_PUBLIC_WS_URL;
             }
 
+            if (typeof window !== 'undefined') {
+              const isPageSecure = window.location.protocol === 'https:';
+              const wsProtocol = isPageSecure ? 'wss:' : 'ws:';
+              return `${wsProtocol}//${window.location.host}/ws/chart`;
+            }
+
             try {
-              const apiUrl = new URL(apiBaseUrl);
+              const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+              const apiUrl = new URL(backendUrl);
               const isSecure = apiUrl.protocol === 'https:';
               const wsProtocol = isSecure ? 'wss:' : 'ws:';
               return `${wsProtocol}//${apiUrl.host}/ws/chart`;
-            } catch (error) {
-              console.warn(
-                '[TradingView] Failed to derive WebSocket URL from NEXT_PUBLIC_API_URL, falling back to window.location',
-                error,
-              );
-
-              if (typeof window !== 'undefined') {
-                const isPageSecure = window.location.protocol === 'https:';
-                const wsProtocol = isPageSecure ? 'wss:' : 'ws:';
-                return `${wsProtocol}//${window.location.host}/ws/chart`;
-              }
-
+            } catch {
               return 'ws://localhost:3002/ws/chart';
             }
           })();

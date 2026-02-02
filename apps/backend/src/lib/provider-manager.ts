@@ -36,9 +36,8 @@ class ProviderManager {
    * Only initializes chains that have RPC URLs configured
    */
   initializeProviders(): void {
-    // Only initialize Base Mainnet (8453) for now
-    // Chain 84532 (Base Sepolia) can be added later when needed
-    const chains: SupportedChainId[] = [8453];
+    // Base Mainnet (8453) and Base Sepolia (84532)
+    const chains: SupportedChainId[] = [8453, 84532];
 
     for (const chainId of chains) {
       try {

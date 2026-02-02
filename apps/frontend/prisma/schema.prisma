@@ -1,0 +1,439 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DIRECT_DATABASE_URL") // 🔥 Use direct connection (more stable)
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model User {
+  id                    String                @id @default(cuid())
+  privyDid              String                @unique
+  walletAddress         String?               @unique
+  email                 String?               @unique
+  username              String?               @unique // NEW: Optional username (defaults to walletAddress)
+  role                  UserRole              @default(TRADER)
+  isActive              Boolean               @default(true)
+  sellerStatus          SellerStatus          @default(NOT_APPLIED)
+  appliedAt             DateTime?
+  verifiedAt            DateTime?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  reviewedVerifications AccountVerification[] @relation("ReviewedBy")
+  accountVerification   AccountVerification?
+  approvedSubmissions   Submission[]          @relation("ApprovedBy")
+  submissions           Submission[]
+  listings              Listing[]
+  approvedListings      Listing[]             @relation("ApprovedBy")
+
+  // NEW: Comments system relations
+  comments     ListingComment[]     @relation("CommentAuthor")
+  commentLikes ListingCommentLike[]
+
+  // NEW: Bidding system relations
+  bids Bid[] @relation("UserBids")
+
+  // NEW: Notifications system relations
+  notifications UserNotification[]
+
+  @@map("users")
+}
+
+model AccountVerification {
+  id                      String             @id @default(cuid())
+  userId                  String             @unique
+  documentType            DocumentType
+  documentNumber          String
+  documentImageUrl        String?
+  firstName               String
+  lastName                String
+  dateOfBirth             DateTime
+  countryOfIssue          String
+  state                   String?
+  address                 String
+  emailAddress            String
+  status                  VerificationStatus @default(PENDING)
+  submittedAt             DateTime           @default(now())
+  reviewedAt              DateTime?
+  reviewedBy              String?
+  rejectionReason         String?
+  attempts                Int                @default(1)
+  lastAttemptAt           DateTime           @default(now())
+  selfieImageUrl          String?
+  facialComparisonScore   Float?
+  visionApiRecommendation String?
+  documentAnalysisResults Json?
+  facialVerificationAt    DateTime?
+  reviewer                User?              @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  user                    User               @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@index([userId])
+  @@map("account_verifications")
+}
+
+model Submission {
+  id                     String             @id @default(cuid())
+  title                  String
+  symbol                 String
+  brand                  String?
+  story                  String?
+  details                String?
+  provenance             String?
+  value                  String? // Stored as string for precision
+  reservePrice           String? // Stored as string for precision
+  hypeSentence           String?
+  assetType              AssetType
+  imageGallery           String[]           @default([])
+  location               String?
+  ownershipDocumentation Json? // Array of {type, imageUrl, uploadedAt}
+  status                 SubmissionStatus   @default(PENDING)
+  rejectionType          RejectionType?
+  rejectionReason        String?
+  ownerId                String
+  approvedBy             String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  approvedAt             DateTime?
+  approvedByUser         User?              @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  owner                  User               @relation(fields: [ownerId], references: [id])
+  listing                Listing?
+  notifications          UserNotification[]
+
+  @@index([status, createdAt])
+  @@index([ownerId, createdAt])
+  @@map("submissions")
+}
+
+model Listing {
+  id String @id @default(cuid())
+
+  title        String
+  symbol       String
+  brand        String?
+  story        String?
+  details      String?
+  provenance   String?
+  value        String? // Stored as string for precision
+  reservePrice String? // Stored as string for precision
+  hypeSentence String?
+  assetDetails Json? // Array of {key: string, value: string} objects
+  assetType    AssetType
+  imageGallery String[]  @default([])
+  location     String?
+
+  isLive     Boolean   @default(false)
+  launchDate DateTime? // When the asset will go live for sale
+
+  // NEW: Bidding fields
+  startingBidPrice String? // Minimum bid amount (USD)
+
+  // NEW: Asset story/info fields for V2 dashboard
+  hypePoints String[] @default([]) // Array of bullet points for hype section
+
+  // NEW: Token creation workflow fields
+  tokenCreationStatus String? @default("AWAITING_USER_DETAILS")
+  userProvidedDetails Json? // Additional details provided by user for token creation
+  tokenParameters     Json? // Admin-approved token parameters (steepness, floor, etc)
+
+  submissionId String? @unique
+  ownerId      String
+  approvedBy   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submission     Submission? @relation(fields: [submissionId], references: [id])
+  owner          User         @relation(fields: [ownerId], references: [id])
+  approvedByUser User?        @relation("ApprovedBy", fields: [approvedBy], references: [id])
+
+  // NEW: Optional token link (won't break existing functionality)
+  token Token? @relation("ListingToken")
+
+  // Canvas / drops visibility (synced to Convex)
+  showOnCanvas Boolean @default(true) // Only sync to canvas when true
+  isFeatured   Boolean @default(false) // Exactly one listing should have true
+  showOnDrops  Boolean @default(false) // Show on drops/upcoming page
+
+  // NEW: Comments relation
+  comments ListingComment[]
+
+  // NEW: Bids relation
+  bids Bid[]
+
+  // NEW: Notifications relation
+  notifications UserNotification[]
+
+  @@index([isLive, createdAt])
+  @@index([ownerId])
+  @@index([tokenCreationStatus])
+  @@map("listings")
+}
+
+enum UserRole {
+  TRADER
+  ADMIN
+}
+
+enum SellerStatus {
+  NOT_APPLIED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocumentType {
+  DRIVERS_LICENSE
+  PASSPORT
+  ID_CARD
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RejectionType {
+  MANUAL
+  TX_FAILURE
+}
+
+enum AssetType {
+  VEHICLE
+  JEWELRY
+  COLLECTIBLE
+  ART
+  FASHION
+  ALCOHOL
+  OTHER
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+// ========== TRADING SYSTEM EXTENSION ==========
+
+model Token {
+  id              String @id @default(cuid())
+  contractAddress String @unique
+  symbol          String
+  name            String
+  decimals        Int    @default(18)
+
+  // Financial precision - strings only
+  currentPrice     String @default("0")
+  currentPriceACES String @default("0")
+  volume24h        String @default("0")
+
+  // Basic metadata
+  chainId     Int              @default(8453)
+  phase       TokenPhase       @default(BONDING_CURVE)
+  priceSource TokenPriceSource @default(BONDING_CURVE)
+  dexLiveAt   DateTime?
+  poolAddress String?          @unique
+  isActive    Boolean          @default(true)
+
+  // Optional link to existing listings (non-breaking)
+  listingId String?  @unique
+  listing   Listing? @relation("ListingToken", fields: [listingId], references: [id])
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contractAddress])
+  @@index([chainId])
+  @@index([isActive])
+  @@map("tokens")
+}
+
+// ========== ACES PRICE TRACKING ==========
+
+model AcesPriceSnapshot {
+  id           String  @id @default(cuid())
+  tradeId      String  @unique // Reference to Trade.id from subgraph
+  tokenAddress String // Token being traded (for indexing)
+  acesUsdPrice Decimal @db.Decimal(30, 18) // ACES price in USD at trade time
+  blockNumber  BigInt // Block number of trade
+  timestamp    BigInt // Unix timestamp (seconds)
+  source       String  @default("aerodrome") // 'aerodrome' | 'fallback'
+
+  createdAt DateTime @default(now())
+
+  @@index([tokenAddress, timestamp])
+  @@index([blockNumber])
+  @@index([tradeId])
+  @@map("aces_price_snapshots")
+}
+
+// Enums for Token model
+enum TokenPhase {
+  BONDING_CURVE
+  DEX_TRADING
+}
+
+enum TokenPriceSource {
+  BONDING_CURVE
+  DEX
+}
+
+enum TradeType {
+  BUY
+  SELL
+}
+
+// ========== COMMENTS SYSTEM ==========
+
+model ListingComment {
+  id        String  @id @default(cuid())
+  content   String // The actual comment text
+  listingId String // Which listing this comment belongs to
+  authorId  String // Who wrote the comment
+  parentId  String? // NULL for top-level comments, ID of parent for replies
+
+  // Moderation fields
+  isHidden      Boolean @default(false)
+  isFlagged     Boolean @default(false)
+  reportedCount Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  listing Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  author  User                 @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parent  ListingComment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies ListingComment[]     @relation("CommentReplies")
+  likes   ListingCommentLike[]
+
+  @@index([listingId, createdAt])
+  @@index([parentId])
+  @@index([authorId])
+  @@index([isHidden, isFlagged])
+  @@map("listing_comments")
+}
+
+model ListingCommentLike {
+  id        String @id @default(cuid())
+  commentId String // Which comment was liked
+  userId    String // Who liked it
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  comment ListingComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Prevent duplicate likes from same user on same comment
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
+  @@map("listing_comment_likes")
+}
+
+// ========== BIDDING SYSTEM ==========
+
+model Bid {
+  id      String  @id @default(cuid())
+  amount  String // Bid amount in USD (using string for precision)
+  message String? // Optional message from bidder
+
+  listingId String // Which listing this bid is for
+  bidderId  String // Who placed the bid
+
+  status    BidStatus @default(PENDING)
+  expiresAt DateTime // Auto-set to 30 days from creation
+
+  // Response from listing owner
+  respondedAt     DateTime?
+  responseMessage String?
+
+  // Audit trail for bid updates
+  previousBidId String? // Reference to the bid this replaces
+  isActive      Boolean @default(true) // Only one active bid per user per listing
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  listing     Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder      User    @relation("UserBids", fields: [bidderId], references: [id], onDelete: Cascade)
+  previousBid Bid?    @relation("BidHistory", fields: [previousBidId], references: [id])
+  updatedBids Bid[]   @relation("BidHistory")
+
+  @@index([listingId, status, createdAt])
+  @@index([bidderId, status, createdAt])
+  @@index([listingId, bidderId, isActive])
+  @@map("bids")
+}
+
+// ========== NOTIFICATIONS SYSTEM ==========
+
+model UserNotification {
+  id           String    @id @default(cuid())
+  userId       String // Reference to users.id
+  listingId    String? // Optional reference to listings.id
+  submissionId String? // Optional reference to submissions.id
+  type         String // Notification type (LISTING_APPROVED, READY_TO_MINT, etc)
+  title        String // Display title
+  message      String // Notification message
+  isRead       Boolean   @default(false)
+  actionUrl    String? // Optional URL for notification action
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime? // Optional expiration
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing    Listing?    @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("user_notifications")
+}
+
+// ========== DEX TRADES (BitQuery) ==========
+
+model DexTrade {
+  id           String   @id @default(cuid())
+  txHash       String // Transaction hash
+  tokenAddress String // Token contract address
+  timestamp    BigInt // Unix timestamp in milliseconds
+  blockNumber  String // Block number as string
+  
+  // Trade details
+  isBuy        Boolean // true = buy, false = sell
+  tokenAmount  String // Token amount (as string for precision)
+  acesAmount   String // ACES amount (as string for precision)
+  priceInAces  Float // Price in ACES
+  priceInUsd   Float? // Price in USD (optional)
+  
+  // Trader info
+  trader       String? // Trader wallet address
+  
+  // Metadata
+  source       String   @default("bitquery") // Data source
+  createdAt    DateTime @default(now()) // When stored in DB
+  
+  @@unique([txHash, tokenAddress]) // Prevent duplicates
+  @@index([tokenAddress, timestamp(sort: Desc)]) // Fast queries by token
+  @@index([timestamp]) // For cleanup queries
+  @@map("dex_trades")
+}

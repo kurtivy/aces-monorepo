@@ -16,6 +16,7 @@ import { BondingDataProvider } from '../../contexts/bonding-data-context';
 import { MarketCapProvider } from '../../contexts/market-cap-context';
 import { MiniAppProvider } from './miniapp-provider';
 import { OnchainKitProvider } from '@coinbase/onchainkit';
+import { ConvexClientProvider } from './convex-client-provider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -165,21 +166,22 @@ export default function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <OnchainKitProvider
-        apiKey={onchainKitApiKey}
-        chain={base}
-        config={{
-          appearance: {
-            name: onchainKitProjectName || 'ACES.fun',
-          },
-        }}
-        miniKit={{ enabled: true }}
-      >
-        <MiniAppProvider>
-          <PriceProvider>
-            <BondingDataProvider>
-              <MarketCapProvider>
-                <PrivyProvider
+      <ConvexClientProvider>
+        <OnchainKitProvider
+          apiKey={onchainKitApiKey}
+          chain={base}
+          config={{
+            appearance: {
+              name: onchainKitProjectName || 'ACES.fun',
+            },
+          }}
+          miniKit={{ enabled: true }}
+        >
+          <MiniAppProvider>
+            <PriceProvider>
+              <BondingDataProvider>
+                <MarketCapProvider>
+                  <PrivyProvider
                   appId={privyAppId}
                   config={{
                     loginMethods: ['wallet', 'email'],
@@ -233,7 +235,8 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             </BondingDataProvider>
           </PriceProvider>
         </MiniAppProvider>
-      </OnchainKitProvider>
+        </OnchainKitProvider>
+      </ConvexClientProvider>
     </QueryClientProvider>
   );
 }

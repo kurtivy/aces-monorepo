@@ -1,8 +1,73 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { ImageInfo } from '../../types/canvas'; // Adjusted path
 import { getImageType, getDisplayDimensions } from '../../lib/canvas/image-type-utils'; // Adjusted path
 import { SAMPLE_METADATA } from '../../data/metadata'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
+
+/**
+ * DATA FLOW: Convex → canvas
+ * ----------------------------------------
+ * 1. Convex listForCanvas returns (per item):
+ *    { _id, _creationTime, id, title, description, symbol?, ticker?, date?, countdownDate?,
+ *      image?, rrp?, tokenPrice?, marketCap?, tokenSupply?, listingId?, showOnCanvas,
+ *      isFeatured, isLive, showOnDrops }
+ *    Only items with showOnCanvas === true are returned.
+ *
+ * 2. convexDocToMetadata maps to ImageInfo.metadata (what we use on canvas):
+ *    { id, title, description, symbol?, ticker?, date?, countdownDate?, image?, rrp?,
+ *      tokenPrice?, marketCap?, tokenSupply?, isFeatured, isLive }
+ *    Required for display: title, description; image is optional (placeholder used if missing).
+ *
+ * 3. Each item becomes ImageInfo: { element, type, displayWidth, displayHeight, metadata }.
+ *    finishLoading filters out any entry where !img || !img.metadata (quiet drop).
+ */
+const DEV_LOG_CANVAS_DATA =
+  typeof process !== 'undefined' && process.env.NODE_ENV === 'development';
+
+/** Shape of a Convex canvasItems document (avoids depending on _generated at type-check). */
+type CanvasItemDoc = {
+  _id?: string;
+  _creationTime?: number;
+  id: string;
+  title: string;
+  description: string;
+  symbol?: string;
+  ticker?: string;
+  date?: string;
+  countdownDate?: string;
+  image?: string;
+  rrp?: number;
+  tokenPrice?: number;
+  marketCap?: number;
+  tokenSupply?: number;
+  listingId?: string;
+  showOnCanvas?: boolean;
+  isFeatured: boolean;
+  isLive: boolean;
+  showOnDrops?: boolean;
+};
+
+/** Map Convex canvasItems doc to metadata shape expected by the loader. */
+function convexDocToMetadata(doc: CanvasItemDoc): ImageInfo['metadata'] {
+  return {
+    id: doc.id,
+    title: doc.title,
+    description: doc.description,
+    symbol: doc.symbol,
+    ticker: doc.ticker,
+    date: doc.date,
+    countdownDate: doc.countdownDate,
+    image: doc.image,
+    rrp: doc.rrp,
+    tokenPrice: doc.tokenPrice,
+    marketCap: doc.marketCap,
+    tokenSupply: doc.tokenSupply,
+    isFeatured: doc.isFeatured,
+    isLive: doc.isLive,
+  };
+}
 import { loadImageWithFallback } from '../../lib/utils/image-loader-utils'; // Phase 2 Step 1: Standardized CORS handling
 import { safeCanvasToDataURL } from '../../lib/utils/canvas-error-boundary'; // Phase 2 Step 9: Safe canvas operations
 import { browserUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils'; // Browser-specific optimizations
@@ -132,7 +197,45 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [imagesLoaded, setImagesLoaded] = useState(false);
 
+  const convexItems = useQuery(api.canvasItems.listForCanvas);
+  const imagesToLoad = useMemo((): ImageInfo['metadata'][] | undefined => {
+    // Convex useQuery returns undefined while loading. Do NOT use SAMPLE_METADATA here:
+    // on refresh we'd load sample tiles then overwrite when Convex resolves, causing a race
+    // where new uploads can disappear. Wait for Convex to resolve first.
+    if (convexItems === undefined) {
+      return undefined; // Still loading – effect will skip until we have a defined list
+    }
+    if (convexItems != null && convexItems.length > 0) {
+      const mapped = convexItems.map((doc: CanvasItemDoc) => convexDocToMetadata(doc));
+      if (DEV_LOG_CANVAS_DATA) {
+        console.log('[canvas] Convex listForCanvas data:', {
+          count: convexItems.length,
+          raw: convexItems,
+          mapped: mapped.map((m) => ({
+            id: m.id,
+            title: m.title,
+            image: m.image ? 'set' : 'missing',
+          })),
+        });
+      }
+      return mapped;
+    }
+    if (DEV_LOG_CANVAS_DATA) {
+      console.log('[canvas] Convex returned empty or null, using SAMPLE_METADATA:', {
+        convexItemsNull: convexItems === null,
+        length: convexItems?.length ?? 0,
+      });
+    }
+    return SAMPLE_METADATA;
+  }, [convexItems]);
+
   useEffect(() => {
+    // Wait for Convex to resolve before loading. Prevents refresh race where we'd load
+    // SAMPLE_METADATA then Convex data, and new uploads could be dropped or overwritten.
+    if (imagesToLoad === undefined) {
+      return;
+    }
+
     let loadedCount = 0;
     const loadedImages: ImageInfo[] = [];
 
@@ -146,9 +249,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       // Could not clear image loading flag - continue anyway
     }
 
-    // Load ALL images to ensure complete product showcase
-    // We'll optimize performance through other means (like better caching and smaller initial grid)
-    const imagesToLoad = SAMPLE_METADATA; // Always load all images
+    // Load ALL images: from Convex when available, else static SAMPLE_METADATA
     const totalImages = imagesToLoad.length;
 
     if (totalImages === 0) {
@@ -165,14 +266,43 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     }
 
     const finishLoading = () => {
+      // Fill any indices that never got handleLoad/handleError (e.g. image load hung or global timeout fired).
+      // This ensures Convex items are never dropped when one image is slow or the proxy times out.
+      for (let i = 0; i < totalImages; i++) {
+        if (loadedImages[i] == null && imagesToLoad[i]) {
+          const meta = imagesToLoad[i];
+          LuxuryLogger.log(
+            `[canvas] Item "${meta.title ?? meta.id ?? 'Unknown'}" (id: ${meta.id}) did not finish loading; showing placeholder.`,
+            'warn',
+          );
+          loadedImages[i] = {
+            element: createLuxuryPlaceholderImage(unitSize),
+            type: 'square',
+            displayWidth: unitSize,
+            displayHeight: unitSize,
+            metadata: {
+              ...meta,
+              title: `${meta.title ?? 'Unknown'} (Loading timeout)`,
+            },
+          };
+        }
+      }
+
       // PRODUCTION FIX: Ensure all images have metadata before setting state
       const validImages = loadedImages.filter((img) => {
         if (!img || !img.metadata) {
-          // Image missing metadata, filtering out
+          // Image missing metadata, filtering out (quiet failure)
           return false;
         }
         return true;
       });
+      if (DEV_LOG_CANVAS_DATA && validImages.length !== loadedImages.length) {
+        console.warn('[canvas] Some items dropped (missing element or metadata):', {
+          total: loadedImages.length,
+          valid: validImages.length,
+          dropped: loadedImages.length - validImages.length,
+        });
+      }
 
       // Only set images if we have valid metadata for all
       if (validImages.length > 0) {
@@ -231,7 +361,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       }
     };
 
-    imagesToLoad.forEach((metadata, index) => {
+    imagesToLoad.forEach((metadata: ImageInfo['metadata'], index: number) => {
       // Enhanced null safety check
       if (!metadata) {
         // Metadata is null, skipping image
@@ -241,7 +371,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
 
       if (!metadata.image) {
         LuxuryLogger.log(
-          `Image path is missing for metadata with title: "${metadata.title || 'Unknown'}". Using placeholder.`,
+          `Image path is missing for "${metadata.title || 'Unknown'}" (id: ${metadata.id ?? 'unknown'}). Using placeholder. Fix in Convex or set listing imageGallery when syncing.`,
           'warn',
         );
         const placeholderElement = createLuxuryPlaceholderImage(unitSize); // Pass unitSize
@@ -336,6 +466,9 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
 
       const handleLoad = (img: HTMLImageElement) => {
         try {
+          // If per-image timeout already set a placeholder, still overwrite with real image but don't double-count
+          const wasAlreadySet = loadedImages[index] != null;
+
           // Firefox sometimes reports 0 dimensions initially - add retry logic
           const getDimensions = () => {
             let width = img.naturalWidth || img.width;
@@ -366,10 +499,10 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
                     displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
                     metadata,
                   };
-                  updateState();
+                  if (!wasAlreadySet) updateState();
                 } else {
                   // Metadata became null during image load processing
-                  handleError();
+                  if (!wasAlreadySet) handleError();
                 }
               }, 100);
               return;
@@ -396,21 +529,23 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
                 displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
                 metadata,
               };
-              updateState();
+              if (!wasAlreadySet) updateState();
             } else {
               // Metadata became null during image load processing
-              handleError();
+              if (!wasAlreadySet) handleError();
             }
           };
 
           getDimensions();
         } catch (error) {
           // Image load processing error
-          handleError(); // Fallback to error handling
+          if (loadedImages[index] == null) handleError(); // Fallback to error handling
         }
       };
 
       const handleError = () => {
+        // Avoid double-setting if timeout and loadImage() both fire
+        if (loadedImages[index] != null) return;
         LuxuryLogger.log(`Failed to load image: ${metadata.image}. Using placeholder.`, 'error');
         const placeholderElement = createLuxuryPlaceholderImage(unitSize); // Pass unitSize
 
@@ -438,14 +573,26 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
         updateState();
       };
 
+      // Per-image timeout: if this image never completes (e.g. proxy hang), show placeholder
+      // so the Convex item still appears instead of being dropped at global timeout
+      const perImageTimeout = setTimeout(() => {
+        if (loadedImages[index] == null) {
+          LuxuryLogger.log(
+            `[canvas] Per-image timeout for "${metadata.title ?? metadata.id}" (${metadata.image}).`,
+            'warn',
+          );
+          handleError();
+        }
+      }, loadingConfig.timeout + 2000);
+
       // Phase 2 Step 1: Initiate standardized image loading
-      loadImage();
+      loadImage().finally(() => clearTimeout(perImageTimeout));
     });
 
     return () => {
       clearTimeout(loadingTimeout);
     };
-  }, [unitSize, enableLazyLoading]);
+  }, [unitSize, enableLazyLoading, imagesToLoad]);
 
   return { images, loadingProgress, imagesLoaded };
 };

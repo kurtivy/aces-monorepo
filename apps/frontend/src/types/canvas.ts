@@ -17,6 +17,8 @@ export interface ImageInfo {
     tokenPrice?: number; // Hypothetical token price in USDT
     marketCap?: number; // Hypothetical market capitalization in USDT
     tokenSupply?: number; // Total supply of tokens for the asset
+    isFeatured?: boolean; // From Convex; exactly one item should be true
+    isLive?: boolean; // From Convex; token/listing live for trading
   };
 }
 

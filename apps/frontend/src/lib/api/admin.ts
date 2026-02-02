@@ -1,41 +1,15 @@
 import type { TokenParameters } from '@aces/utils';
 
-function getAdminApiBaseUrl(): string {
-  // Use environment variable if available
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // For localhost development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:3002';
-  }
-
-  // Dynamic URL based on current deployment
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const href = window.location.href;
-
-    // Check for dev/git-dev branch
-    if (href.includes('git-dev') || hostname.includes('git-dev')) {
-      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-    }
-  }
-
-  // Production fallback (main branch and aces.fun)
-  return 'https://acesbackend-production.up.railway.app';
-}
-
-const API_BASE_URL = getAdminApiBaseUrl();
+// Use relative paths for Next.js API routes (no backend URL needed)
+const API_BASE_URL = '';
 
 export class AdminApi {
-
   private static async adminRequest<T = unknown>(
     endpoint: string,
     options: RequestInit = {},
     token?: string,
   ): Promise<T> {
-    const url = `${API_BASE_URL}/api/v1/admin${endpoint}`;
+    const url = `${API_BASE_URL}/api/admin${endpoint}`;
 
     console.log('🌐 Making admin request:', {
       url,
@@ -149,7 +123,7 @@ export class AdminApi {
       id: string;
       title: string;
       symbol: string;
-      description: string;
+      description?: string;
       assetType: string;
       isLive: boolean;
       launchDate: string | null;
@@ -165,7 +139,7 @@ export class AdminApi {
       } | null;
     }>;
   }> {
-    return this.adminRequest('/listings/available', { method: 'GET' }, token);
+    return this.adminRequest('/listings', { method: 'GET' }, token);
   }
 
   static async getAllTokens(token: string): Promise<{
@@ -291,6 +265,119 @@ export class AdminApi {
       `/listings/${listingId}/prepare-mint`,
       {
         method: 'POST',
+      },
+      token,
+    );
+  }
+
+  /**
+   * Create a new listing
+   */
+  static async createListing(
+    data: {
+      title: string;
+      symbol: string;
+      assetType: string;
+      brand?: string | null;
+      story?: string | null;
+      details?: string | null;
+      provenance?: string | null;
+      value?: string | null;
+      reservePrice?: string | null;
+      hypeSentence?: string | null;
+      imageGallery?: string[];
+      location?: string | null;
+      assetDetails?: Record<string, string> | null;
+      hypePoints?: string[];
+      startingBidPrice?: string | null;
+      launchDate?: string | null;
+      tokenId?: string | null;
+      showOnCanvas?: boolean;
+      isFeatured?: boolean;
+      showOnDrops?: boolean;
+    },
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    return this.adminRequest(
+      '/listings',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      token,
+    );
+  }
+
+  /**
+   * Toggle listing live status
+   */
+  static async toggleListingLive(
+    listingId: string,
+    isLive: boolean,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    return this.adminRequest(
+      `/listings/${listingId}/live`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ isLive }),
+      },
+      token,
+    );
+  }
+
+  /**
+   * Sync all Prisma listings with showOnCanvas to Convex so they appear on the infinite canvas.
+   * Call after server restart if the canvas is missing listings.
+   */
+  static async syncCanvas(token: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    synced?: number;
+    failed?: number;
+    removed?: number;
+  }> {
+    return this.adminRequest('/sync-canvas', { method: 'POST' }, token);
+  }
+
+  /**
+   * Create token in database after on-chain creation
+   */
+  static async createTokenInDatabase(
+    data: {
+      contractAddress: string;
+      symbol: string;
+      name: string;
+      chainId?: number;
+      totalSupply?: string;
+      decimals?: string;
+      isFixedSupply?: boolean;
+    },
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: {
+      contractAddress: string;
+      symbol: string;
+      name: string;
+      chainId: number;
+    };
+  }> {
+    return this.adminRequest(
+      '/tokens/create',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
       },
       token,
     );

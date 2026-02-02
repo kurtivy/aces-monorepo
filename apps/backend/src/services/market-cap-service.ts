@@ -171,7 +171,7 @@ export class MarketCapService {
         return null;
       }
 
-      console.log(`[MarketCapService] Fetching pool reserves for pool: ${poolAddress}`);
+      // console.log(`[MarketCapService] Fetching pool reserves for pool: ${poolAddress}`);
 
       // Fetch pool reserves
       const reserves = await this.getPoolReserves(poolAddress);
@@ -180,20 +180,20 @@ export class MarketCapService {
         return null;
       }
 
-      console.log(`[MarketCapService] Pool reserves:`, {
-        reserve0: reserves.reserve0,
-        reserve1: reserves.reserve1,
-      });
+      // console.log(`[MarketCapService] Pool reserves:`, {
+      //   reserve0: reserves.reserve0,
+      //   reserve1: reserves.reserve1,
+      // });
 
       // Calculate price from reserves (token price in ACES)
       const priceAces = this.calculatePriceFromReserves(reserves);
-      console.log(`[MarketCapService] Price in ACES: ${priceAces}`);
+      // console.log(`[MarketCapService] Price in ACES: ${priceAces}`);
 
       // Get ACES/USD price
       let acesUsdPrice = 0;
       try {
         const acesUsdPriceResult = await this.acesUsdPriceService.getAcesUsdPrice();
-        console.log(`[MarketCapService] ACES price from service:`, acesUsdPriceResult);
+        // console.log(`[MarketCapService] ACES price from service:`, acesUsdPriceResult);
 
         if (acesUsdPriceResult === null || acesUsdPriceResult === undefined) {
           console.warn(
@@ -218,7 +218,7 @@ export class MarketCapService {
         console.error('[MarketCapService] Error getting ACES USD price:', priceError);
         return null;
       }
-      console.log(`[MarketCapService] ACES/USD Price: ${acesUsdPrice}`);
+      // console.log(`[MarketCapService] ACES/USD Price: ${acesUsdPrice}`);
 
       // Calculate market cap
       const currentPriceUsd = priceAces * acesUsdPrice;
@@ -234,14 +234,14 @@ export class MarketCapService {
       const tokenReserveHuman = tokenReserveWei.div(new Decimal('1e18')).toNumber();
       const rewardSupply = Math.max(0, DEX_SUPPLY - tokenReserveHuman);
 
-      console.log(`[MarketCapService] Calculated market cap:`, {
-        currentPriceUsd,
-        marketCapUsd,
-        supply: DEX_SUPPLY,
-        rewardSupply,
-        tokensInLP: tokenReserveHuman,
-        isToken0Aces,
-      });
+      // console.log(`[MarketCapService] Calculated market cap:`, {
+      //  currentPriceUsd,
+      //  marketCapUsd,
+      // supply: DEX_SUPPLY,
+      //   rewardSupply,
+      //   tokensInLP: tokenReserveHuman,
+      //   isToken0Aces,
+      // });
 
       return {
         marketCapUsd,
@@ -421,16 +421,16 @@ export class MarketCapService {
 
       const priceAces = acesReserve.div(tokenReserve).toNumber();
 
-      console.log('[MarketCapService] Reserve calculations:', {
-        token0: reserves.token0,
-        token1: reserves.token1,
-        isToken0Aces,
-        reserve0: reserve0.toString(),
-        reserve1: reserve1.toString(),
-        acesReserve: acesReserve.toString(),
-        tokenReserve: tokenReserve.toString(),
-        priceAces,
-      });
+      // console.log('[MarketCapService] Reserve calculations:', {
+      //   token0: reserves.token0,
+      //   token1: reserves.token1,
+      //   isToken0Aces,
+      //   reserve0: reserve0.toString(),
+      //   reserve1: reserve1.toString(),
+      //   acesReserve: acesReserve.toString(),
+      //   tokenReserve: tokenReserve.toString(),
+      //   priceAces,
+      // });
 
       return priceAces;
     } catch (error) {

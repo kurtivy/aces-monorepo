@@ -53,6 +53,7 @@ export default function ConnectWalletProfile({
     connectWallet,
     disconnectWallet,
     hasExternalWallet,
+    authReady,
   } = useAuth();
 
   const { fundWallet } = useFundWallet();
@@ -68,8 +69,10 @@ export default function ConnectWalletProfile({
     null,
   );
 
-  const displayAddress = walletAddress
-    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+  // Prefer wallet from auth, fallback to user profile (handles rehydration / delayed wallets)
+  const effectiveAddress = walletAddress ?? user?.walletAddress ?? null;
+  const displayAddress = effectiveAddress
+    ? `${effectiveAddress.slice(0, 6)}...${effectiveAddress.slice(-4)}`
     : null;
 
   const handleConnectWallet = async () => {
@@ -90,7 +93,7 @@ export default function ConnectWalletProfile({
 
   // Handle buy crypto with chain switching
   const handleBuyCrypto = async () => {
-    if (!walletAddress) return;
+    if (!effectiveAddress) return;
 
     try {
       // Ensure user is on Base mainnet for funding
@@ -100,7 +103,7 @@ export default function ConnectWalletProfile({
       });
 
       // Once on correct chain, open funding
-      fundWallet(walletAddress);
+      fundWallet(effectiveAddress);
     } catch (error) {
       // Check if this is a chain switch requirement
       if (error instanceof Error && error.message.startsWith('CHAIN_SWITCH_REQUIRED:')) {
@@ -128,8 +131,8 @@ export default function ConnectWalletProfile({
       setChainSwitchTarget(null);
 
       // After successful switch, try funding again
-      if (walletAddress) {
-        fundWallet(walletAddress);
+      if (effectiveAddress) {
+        fundWallet(effectiveAddress);
       }
     } catch (error) {
       console.error('Failed to switch chain:', error);
@@ -144,11 +147,11 @@ export default function ConnectWalletProfile({
       setIsWalletModalOpen(true);
     } else {
       // For external wallets, open block explorer
-      if (walletAddress) {
+      if (effectiveAddress) {
         const baseUrl = isOnBaseMainnet
           ? 'https://basescan.org/address/'
           : 'https://sepolia.basescan.org/address/';
-        window.open(`${baseUrl}${walletAddress}`, '_blank');
+        window.open(`${baseUrl}${effectiveAddress}`, '_blank');
       }
     }
   };
@@ -161,10 +164,10 @@ export default function ConnectWalletProfile({
 
   // Handle copying wallet address to clipboard
   const handleCopyAddress = async () => {
-    if (!walletAddress) return;
+    if (!effectiveAddress) return;
 
     try {
-      await navigator.clipboard.writeText(walletAddress);
+      await navigator.clipboard.writeText(effectiveAddress);
       setIsCopied(true);
 
       // Reset the copied state after 2 seconds
@@ -183,8 +186,23 @@ export default function ConnectWalletProfile({
     return 'golden-flow'; // Default for traders and others
   };
 
+  // Authenticated but still initializing (profile/wallet not ready yet)
+  if (isAuthenticated && !authReady) {
+    return (
+      <div className={className}>
+        <Button
+          className="flex items-center gap-2 text-[#D0B264] bg-black hover:bg-black/80 border border-dashed border-[#D0B264]/30 hover:text-[#D0B264] transition-colors duration-150 px-2 py-2 rounded-md cursor-wait"
+          disabled
+        >
+          <div className="w-6 h-6 rounded-full bg-[#D0B264]/20 animate-pulse" />
+          <span className="text-sm font-medium">Connecting...</span>
+        </Button>
+      </div>
+    );
+  }
+
   if (isAuthenticated) {
-    // Connected Wallet Dropdown (show immediately when Privy auth succeeds)
+    // Connected Wallet Dropdown (only when auth is ready and profile/wallet resolved)
     return (
       <div className={className}>
         <DropdownMenu open={isDropdownOpen} onOpenChange={onDropdownChange}>
@@ -221,7 +239,7 @@ export default function ConnectWalletProfile({
 
               <div className="flex flex-col items-start min-w-0 pl-2">
                 <div className="text-[#D0B264] text-sm font-medium truncate max-w-[120px]">
-                  {displayAddress || (isLoading ? 'Loading...' : 'No address')}
+                  {displayAddress ?? 'No address'}
                 </div>
               </div>
               <span className="sr-only">Account options</span>
@@ -237,7 +255,7 @@ export default function ConnectWalletProfile({
                 <div>
                   <p className="text-xs text-[#D0B264]/60">Connected Wallet</p>
                   <p className="text-xs font-mono text-[#D0B264]">
-                    {displayAddress || (isLoading ? 'Loading...' : 'No address')}
+                    {displayAddress ?? 'No address'}
                   </p>
                 </div>
                 <div className="flex items-center">
@@ -282,7 +300,7 @@ export default function ConnectWalletProfile({
               onClick={handleProfileClick}
             >
               <User className="w-4 h-4 mr-2 text-[#D0B264] group-hover:text-white transition-colors duration-150" />
-              <Link href="/profile">{isLoading && !user ? 'Loading...' : 'Profile'}</Link>
+              <Link href="/profile">Profile</Link>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator className="bg-[#D0B264]/20" />

@@ -3,13 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "launch-pool": "tsx scripts/launch-pool.ts",
+    "test-quote": "tsx scripts/test-dex-quote.ts",
+    "test-pool-fees": "tsx scripts/test-pool-fees.ts",
+    "seed-convex-canvas": "tsx scripts/seed-convex-canvas.ts",
     "dev": "next dev -H 0.0.0.0",
     "dev:3001": "next dev -H 0.0.0.0 -p 3001",
     "dev:both": "concurrently \"npm run dev\" \"npm run dev:3001\"",
     "dev:production-test": "next dev -H 0.0.0.0",
-    "build": "next build",
+    "postinstall": "npx prisma generate --schema=./prisma/schema.prisma",
+    "build": "npx prisma generate --schema=./prisma/schema.prisma && next build",
     "start": "next start",
     "lint": "next lint"
+  },
+  "prisma": {
+    "schema": "./prisma/schema.prisma"
   },
   "dependencies": {
     "@aces/utils": "workspace:*",
@@ -17,6 +25,7 @@
     "@farcaster/miniapp-sdk": "^0.2.1",
     "@google-cloud/storage": "^7.16.0",
     "@hookform/resolvers": "^5.1.1",
+    "@prisma/client": "5.10.2",
     "@privy-io/react-auth": "^2.20.0",
     "@privy-io/wagmi": "^1.0.6",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -45,6 +54,7 @@
     "@wagmi/core": "^2.17.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "convex": "^1.31.7",
     "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "decimal.js": "^10.6.0",
@@ -73,9 +83,11 @@
     "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
     "eslint-config-next": "15.2.4",
+    "prisma": "5.10.2",
     "raw-loader": "^4.0.2",
     "tailwindcss": "^4.1.7",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.21.0",
     "tw-animate-css": "^1.3.5",
     "typescript": "^5"
   }

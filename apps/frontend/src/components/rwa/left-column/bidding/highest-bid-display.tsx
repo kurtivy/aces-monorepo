@@ -5,10 +5,16 @@ import { BidsApi } from '@/lib/api/bids';
 
 interface HighestBidDisplayProps {
   listingId: string;
+  /** Shown when there are no bids (e.g. starting/reserve price) */
+  reservePrice?: number | null;
   className?: string;
 }
 
-export function HighestBidDisplay({ listingId, className = '' }: HighestBidDisplayProps) {
+export function HighestBidDisplay({
+  listingId,
+  reservePrice,
+  className = '',
+}: HighestBidDisplayProps) {
   const [highestBid, setHighestBid] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +67,24 @@ export function HighestBidDisplay({ listingId, className = '' }: HighestBidDispl
     return () => clearInterval(interval);
   }, [listingId]);
 
+  const label = highestBid
+    ? 'Current high bid'
+    : reservePrice != null
+      ? 'Reserve price'
+      : 'Current high bid';
+  const value =
+    highestBid != null
+      ? `$${highestBid.toLocaleString()}`
+      : reservePrice != null
+        ? `$${reservePrice.toLocaleString()}`
+        : null;
+
   return (
     <div
       className={`bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden ${className}`}
     >
       <div className="flex items-center justify-between p-3">
-        <span className="text-[#DCDDCC] text-xs font-medium">Current High Bid:</span>
+        <span className="text-[#DCDDCC] text-xs font-medium">{label}:</span>
         <span className="text-white text-xs font-semibold">
           {loading ? (
             <div className="flex items-center gap-1">
@@ -75,8 +93,8 @@ export function HighestBidDisplay({ listingId, className = '' }: HighestBidDispl
             </div>
           ) : error ? (
             <span className="text-red-400">Error</span>
-          ) : highestBid ? (
-            `$${highestBid.toLocaleString()}`
+          ) : value ? (
+            value
           ) : (
             <span className="text-[#DCDDCC]">No bids yet</span>
           )}

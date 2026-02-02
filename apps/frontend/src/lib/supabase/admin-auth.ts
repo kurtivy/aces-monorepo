@@ -14,10 +14,10 @@ export const supabaseAdmin =
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
           // Use a separate storage key for admin auth to avoid conflicts with main auth
-          storageKey: 'admin-auth-token',
-          autoRefreshToken: false, // Disable auto-refresh for non-persistent sessions
-          persistSession: false, // Non-persistent sessions - logout on browser close
-          detectSessionInUrl: false, // Don't detect sessions from URL
+          storageKey: 'sb-admin-auth',
+          autoRefreshToken: true,
+          persistSession: true, // Persist so session survives navigation and token-launch can verify
+          detectSessionInUrl: false,
         },
       })
     : null;
@@ -111,6 +111,31 @@ export async function getCurrentAdminUser() {
 export async function isAdminAuthenticated(): Promise<boolean> {
   const user = await getCurrentAdminUser();
   return !!user;
+}
+
+/**
+ * Get Supabase session access token for API calls.
+ * Returns null if no active admin session (client-side only).
+ */
+export async function getAdminAccessToken(): Promise<string | null> {
+  if (!supabaseAdmin) {
+    return null;
+  }
+
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabaseAdmin.auth.getSession();
+
+    if (error || !session?.access_token) {
+      return null;
+    }
+
+    return session.access_token;
+  } catch {
+    return null;
+  }
 }
 
 // Optional: Clear admin session on app start for security

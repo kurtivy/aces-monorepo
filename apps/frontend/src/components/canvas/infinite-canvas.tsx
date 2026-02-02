@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import type { ImageInfo } from '../../types/canvas';
+import { normalizeSymbol } from '../../constants/live-trading';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
@@ -39,6 +41,22 @@ import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-
 
 type LoadingState = 'loading' | 'ready';
 
+/** Legacy canvas id → symbol for Convex items that may not have symbol/ticker set. */
+const LEGACY_CANVAS_SYMBOLS: Record<string, string> = {
+  '7': 'APKAWS',
+  '26': 'RMILLE',
+  '27': 'ILLICIT',
+};
+
+function getSymbolFromImageInfo(imageInfo: ImageInfo | null): string {
+  if (!imageInfo?.metadata) return '';
+  const sym =
+    normalizeSymbol(imageInfo.metadata.symbol) ?? normalizeSymbol(imageInfo.metadata.ticker);
+  if (sym) return sym;
+  const legacyId = imageInfo.metadata.id;
+  return (legacyId && LEGACY_CANVAS_SYMBOLS[legacyId]) ?? '';
+}
+
 // FEATURED SECTION: Add interface for props
 interface InfiniteCanvasProps {
   featuredImageId?: string;
@@ -47,9 +65,10 @@ interface InfiniteCanvasProps {
 
 // FEATURED SECTION: Update component declaration to accept props
 const InfiniteCanvas = ({
-  featuredImageId = '27', // Default to Banksy – The Illicit Collaboration
+  featuredImageId, // Optional override; otherwise featured is driven by Convex isFeatured
   onFeaturedImageClick,
 }: InfiniteCanvasProps = {}) => {
+  const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   // Calendar icon modal state
@@ -68,9 +87,15 @@ const InfiniteCanvas = ({
   } = useModal();
 
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
+  const [entranceComplete, setEntranceComplete] = useState(false);
 
   // Restore session memory for intro animation
   const [hasSeenIntro, setHasSeenIntro] = useState(false);
+
+  const handleEntranceComplete = useCallback(() => setEntranceComplete(true), []);
+
+  // Featured section: show immediate feedback when user clicks (navigation or modal)
+  const [featuredActionPending, setFeaturedActionPending] = useState(false);
 
   // Week 3: Use enhanced capability system
   const { configuration, isReady: capabilitiesReady } = useDeviceCapabilities();
@@ -109,6 +134,48 @@ const InfiniteCanvas = ({
         : 0.5, // Week 3: Capability-aware animation duration
     });
 
+  // When featured section is clicked: show immediate feedback, then navigate or open modal
+  const handleFeaturedImageClick = useCallback(
+    (imageInfo: ImageInfo) => {
+      if (featuredActionPending) return;
+      setFeaturedActionPending(true);
+
+      const doAction = () => {
+        if (onFeaturedImageClick) {
+          onFeaturedImageClick(imageInfo);
+          return;
+        }
+        const symbol = getSymbolFromImageInfo(imageInfo);
+        const isLive =
+          imageInfo.metadata?.isLive === true ||
+          (symbol !== '' && ['APKAWS', 'RMILLE', 'ILLICIT'].includes(symbol.toUpperCase()));
+        if (symbol && isLive) {
+          router.push(`/rwa/${symbol.toLowerCase()}`);
+          return;
+        }
+        setSelectedImage(imageInfo);
+      };
+
+      // Defer action by one frame so "Opening..." overlay paints first
+      requestAnimationFrame(() => {
+        requestAnimationFrame(doAction);
+      });
+    },
+    [onFeaturedImageClick, router, featuredActionPending],
+  );
+
+  // Clear pending when modal opens (modal path); navigation path unmounts so no clear needed
+  useEffect(() => {
+    if (selectedImage) setFeaturedActionPending(false);
+  }, [selectedImage]);
+
+  // Fallback: clear overlay if custom onFeaturedImageClick doesn't navigate (e.g. after 4s)
+  useEffect(() => {
+    if (!featuredActionPending) return;
+    const fallback = setTimeout(() => setFeaturedActionPending(false), 4000);
+    return () => clearTimeout(fallback);
+  }, [featuredActionPending]);
+
   // FEATURED SECTION: Updated useCanvasRenderer call with featured section props
   const {
     canvasReady,
@@ -120,7 +187,7 @@ const InfiniteCanvas = ({
     images,
     viewState,
     imagesLoaded: imagesLoaded,
-    canvasVisible: loadingState !== 'loading' || hasSeenIntro,
+    canvasVisible: true /* Always draw so entrance animation can complete; opacity hides during intro */,
     onCreateTokenClick: () => (window.location.href = 'https://www.aceofbase.fun'), // Navigate to aceofbase domain
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
@@ -129,9 +196,10 @@ const InfiniteCanvas = ({
     updateViewState,
     // FEATURED SECTION: Add featured section props
     featuredImageId,
-    onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    onFeaturedImageClick: handleFeaturedImageClick,
     // HOVER ENHANCEMENT: Pass hover functionality to renderer via ref
     hoveredProductImageRef,
+    onEntranceComplete: handleEntranceComplete,
   });
 
   const imagesRef = useRef(images);
@@ -172,13 +240,14 @@ const InfiniteCanvas = ({
     repeatedTokens,
     // FEATURED SECTION: Add featured section props
     featuredImage,
-    onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    onFeaturedImageClick: handleFeaturedImageClick,
     // Auction icon click handler
     onAuctionIconClick: handleAuctionIconClick,
     // Modal callbacks for home area buttons
     onAboutClick: openAboutModal,
     onTermsClick: openTermsModal,
     onDrvnClick: (image) => setDrvnImage(image),
+    onNavigateToDrops: () => router.push('/drops'),
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -393,14 +462,48 @@ const InfiniteCanvas = ({
         </motion.div>
       )}
 
-      {/* Loading screen with new aces.fun intro animation */}
+      {/* Loading screen: only show full-page intro for first visit; loading stays synced with actual readiness */}
       {loadingState === 'loading' && !hasSeenIntro && (
         <IntroAnimation
           onIntroAnimationComplete={handleLoadingComplete}
-          isComplete={imagesLoaded && canvasReady}
+          isComplete={
+            imagesLoaded &&
+            canvasReady &&
+            entranceComplete /* Wait for entrance animation so loading doesn't end early */
+          }
           skipLetterAnimation={hasSeenIntro}
         />
       )}
+
+      {/* Featured section click feedback: immediate "Opening..." overlay */}
+      <AnimatePresence>
+        {featuredActionPending && (
+          <motion.div
+            key="featured-pending"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
+            aria-live="polite"
+            role="status"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col items-center gap-4 rounded-2xl bg-black/80 px-8 py-6 border border-white/10 shadow-xl"
+            >
+              <div
+                className="h-10 w-10 rounded-full border-2 border-white/30 border-t-white animate-spin"
+                aria-hidden
+              />
+              <span className="text-white font-medium text-sm sm:text-base">Opening…</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Canvas */}
       <motion.div

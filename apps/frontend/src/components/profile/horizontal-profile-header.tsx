@@ -44,7 +44,7 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
     acesContract,
     tokenContract: null,
     signer,
-    chainId: 84532,
+    chainId: 8453,
   });
 
   const { acesBalance, loading: balancesLoading } = balances;

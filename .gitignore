@@ -82,3 +82,16 @@ playwright.config.ts
 **/scripts/
 **/e2e/
 **/__tests__/
+
+# Local guides and analysis (do not push)
+ERROR_ANALYSIS.md
+MIGRATION_PLAN.md
+WEBSOCKET_ANALYSIS.md
+apps/frontend/API_MIGRATION_TESTING.md
+apps/frontend/CONVEX_CANVAS_ANALYSIS.md
+apps/frontend/ENV_VARIABLES_MIGRATION.md
+apps/frontend/REAL_TIME_UPDATES.md
+apps/frontend/src/hooks/canvas/CANVAS_DATA_FLOW.md
+
+# Local test/API scripts (may contain sensitive endpoints)
+test-api-endpoints.js

@@ -80,7 +80,7 @@ export default function TokenSwapInterface({
   showProgression = true,
   imageGallery,
   primaryImage,
-  chainId = 84532, // Default to Base Sepolia
+  chainId = 8453, // Default to Base Mainnet
   dexMeta = null,
 }: TokenSwapInterfaceProps) {
   const { walletAddress, isAuthenticated, connectWallet: authConnectWallet } = useAuth();
@@ -110,8 +110,7 @@ export default function TokenSwapInterface({
 
   // Get contract addresses for current chain
   const getCurrentContractAddresses = () => {
-    // Default to Base Sepolia (84532) for development
-    return getContractAddresses(currentChainId || 84532);
+    return getContractAddresses(currentChainId || 8453);
   };
 
   const contractAddresses = useMemo(getCurrentContractAddresses, [currentChainId]);
@@ -419,7 +418,7 @@ export default function TokenSwapInterface({
     if (!Number.isFinite(parsed)) {
       return '0.00';
     }
-    
+
     // Format large numbers with commas for better readability
     if (parsed >= 1000000) {
       return `${(parsed / 1000000).toFixed(2)}M`;
@@ -427,10 +426,10 @@ export default function TokenSwapInterface({
     if (parsed >= 1000) {
       return `${(parsed / 1000).toFixed(2)}K`;
     }
-    
+
     return parsed.toLocaleString('en-US', {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     });
   }, []);
 
@@ -912,7 +911,7 @@ export default function TokenSwapInterface({
           debugLog('Current chain ID:', chainId);
 
           // Validate addresses for this network
-          const addresses = getContractAddresses(chainId || 84532);
+          const addresses = getContractAddresses(chainId || 8453);
 
           // Check if factory and ACES token are configured
           if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {

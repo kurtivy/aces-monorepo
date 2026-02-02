@@ -1,17 +1,12 @@
 /**
  * useRealtimeMetrics Hook
  *
- * Real-time WebSocket connection for token metrics streaming.
- * Replaces REST API polling with instant WebSocket updates.
- * Respects rate limits by batching updates.
+ * Real-time token metrics via Next.js API (frontend-only, no backend).
+ * Prefers SSE stream (/api/tokens/:address/health/stream) for live updates;
+ * falls back to polling GET /api/tokens/:address/health if SSE is unavailable.
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import {
-  getReconnectDelay,
-  shouldReconnect,
-  formatReconnectDelay,
-} from '@/lib/websocket/reconnection-utils';
 
 export interface RealtimeMetrics {
   tokenAddress: string;
@@ -23,14 +18,13 @@ export interface RealtimeMetrics {
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   circulatingSupply?: number | null;
   rewardSupply?: number | null; // Actual circulating for reward calculations (excludes LP tokens)
-  // Fee breakdown (may not be present in all WS payloads)
+  // Fee breakdown (may not be present in all payloads)
   totalFeesUsd?: number;
   totalFeesAces?: string;
   dexFeesUsd?: number;
   dexFeesAces?: string;
   bondingFeesUsd?: number;
   bondingFeesAces?: string;
-  // 🔥 NEW: Bonding data fields
   bondingData?: {
     isBonded: boolean;
     bondingPercentage: number;
@@ -41,16 +35,16 @@ export interface RealtimeMetrics {
 }
 
 interface UseRealtimeMetricsOptions {
-  /** Auto-reconnect on disconnect (default: true) */
-  autoReconnect?: boolean;
-  /** Reconnect delay in ms (default: 5000) */
-  reconnectDelay?: number;
   /** Enable debug logging (default: false) */
   debug?: boolean;
-  /** Fallback to REST polling if WebSocket fails (default: true) */
+  /** Use SSE stream for real-time updates (default: true) */
+  useSSE?: boolean;
+  /** Use polling when SSE is not used or fails (default: true) */
   fallbackToPolling?: boolean;
-  /** Polling interval in ms when using fallback (default: 30000) */
+  /** Polling interval in ms when not using SSE (default: 30000) */
   pollingInterval?: number;
+  /** SSE push interval in ms (default: 5000, aligned with server cache for Alchemy rate limits) */
+  sseIntervalMs?: number;
 }
 
 interface UseRealtimeMetricsResult {
@@ -62,35 +56,43 @@ interface UseRealtimeMetricsResult {
   disconnect: () => void;
 }
 
-const WS_BASE_URL = (() => {
-  if (typeof window === 'undefined') return 'ws://localhost:3002';
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (apiUrl) {
-    try {
-      const url = new URL(apiUrl);
-      const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${protocol}//${url.host}`;
-    } catch {
-      // Fallback
-    }
-  }
-
-  // Derive from window.location
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.hostname}:3002`;
-})();
+function payloadToRealtimeMetrics(
+  tokenAddress: string,
+  payload: Record<string, unknown>,
+): RealtimeMetrics {
+  const timestamp = (payload.timestamp as number) || Date.now();
+  const metrics: RealtimeMetrics = {
+    tokenAddress: tokenAddress.toLowerCase(),
+    timestamp,
+  };
+  if (payload.marketCapUsd !== undefined) metrics.marketCapUsd = payload.marketCapUsd as number;
+  if (payload.currentPriceUsd !== undefined)
+    metrics.currentPriceUsd = payload.currentPriceUsd as number;
+  if (payload.volume24hUsd !== undefined) metrics.volume24hUsd = payload.volume24hUsd as number;
+  if (payload.volume24hAces !== undefined) metrics.volume24hAces = String(payload.volume24hAces);
+  if (payload.liquidityUsd !== undefined)
+    metrics.liquidityUsd = payload.liquidityUsd as number | null;
+  if (payload.liquiditySource !== undefined)
+    metrics.liquiditySource = payload.liquiditySource as 'bonding_curve' | 'dex' | null;
+  if (payload.circulatingSupply !== undefined)
+    metrics.circulatingSupply = payload.circulatingSupply as number | null;
+  if (payload.rewardSupply !== undefined)
+    metrics.rewardSupply = payload.rewardSupply as number | null;
+  if (payload.bondingData !== undefined)
+    metrics.bondingData = payload.bondingData as RealtimeMetrics['bondingData'];
+  return metrics;
+}
 
 export const useRealtimeMetrics = (
   tokenAddress: string | undefined,
   options: UseRealtimeMetricsOptions = {},
 ): UseRealtimeMetricsResult => {
   const {
-    autoReconnect = true,
-    reconnectDelay = 5000,
     debug = false,
+    useSSE = true,
     fallbackToPolling = true,
     pollingInterval = 30000,
+    sseIntervalMs = 5000,
   } = options;
 
   const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null);
@@ -98,30 +100,28 @@ export const useRealtimeMetrics = (
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔥 NEW: Heartbeat monitoring for connection health
-  const [connectionHealth, setConnectionHealth] = useState({
-    lastHeartbeat: 0,
-    isHealthy: true,
-  });
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptRef = useRef(0); // Track reconnection attempts for exponential backoff
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatMonitorRef = useRef<NodeJS.Timeout | null>(null); // 🔥 NEW: Heartbeat monitor
+  const eventSourceRef = useRef<EventSource | null>(null);
   const mountedRef = useRef(true);
   const usePollingRef = useRef(false);
 
   const log = useCallback(
-    (message: string, data?: any) => {
+    (message: string, data?: unknown) => {
       if (debug) {
-        console.log(`[useRealtimeMetrics] ${message}`, data || '');
+        console.log(`[useRealtimeMetrics] ${message}`, data ?? '');
       }
     },
     [debug],
   );
 
-  // Fallback REST API polling
+  const getHealthUrl = useCallback(() => {
+    return `/api/tokens/${tokenAddress}/health?chainId=8453&currency=usd`;
+  }, [tokenAddress]);
+
+  const getStreamUrl = useCallback(() => {
+    return `/api/tokens/${tokenAddress}/health/stream?chainId=8453&currency=usd&intervalMs=${sseIntervalMs}`;
+  }, [tokenAddress, sseIntervalMs]);
+
   const startPolling = useCallback(() => {
     if (!tokenAddress || !fallbackToPolling) return;
 
@@ -129,39 +129,44 @@ export const useRealtimeMetrics = (
       if (!mountedRef.current) return;
 
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-        const response = await fetch(
-          `${apiUrl}/api/v1/tokens/${tokenAddress}/health?chainId=8453&currency=usd`,
-        );
+        const response = await fetch(getHealthUrl());
         const data = await response.json();
+        // Health endpoint returns { success, data: { metricsData, marketCapData, bondingData } }
+        const payload = data.success && data.data ? data.data : null;
 
-        if (data.success && mountedRef.current) {
+        if (payload && mountedRef.current) {
           const metricsUpdate: RealtimeMetrics = {
             tokenAddress: tokenAddress.toLowerCase(),
             timestamp: Date.now(),
           };
 
-          if (data.metricsData) {
-            metricsUpdate.marketCapUsd = data.metricsData.marketCapUsd;
-            metricsUpdate.volume24hUsd = data.metricsData.volume24hUsd;
-            metricsUpdate.volume24hAces = data.metricsData.volume24hAces;
-            metricsUpdate.liquidityUsd = data.metricsData.liquidityUsd;
-            metricsUpdate.liquiditySource = data.metricsData.liquiditySource;
+          if (payload.metricsData) {
+            metricsUpdate.marketCapUsd = payload.metricsData.marketCapUsd;
+            metricsUpdate.volume24hUsd = payload.metricsData.volume24hUsd;
+            metricsUpdate.volume24hAces = payload.metricsData.volume24hAces;
+            metricsUpdate.liquidityUsd = payload.metricsData.liquidityUsd;
+            metricsUpdate.liquiditySource = payload.metricsData.liquiditySource;
           }
 
-          if (data.marketCapData) {
-            metricsUpdate.currentPriceUsd = data.marketCapData.currentPriceUsd;
-            // 🔥 NEW: Extract rewardSupply for reward calculations
+          if (payload.marketCapData) {
+            metricsUpdate.currentPriceUsd = payload.marketCapData.currentPriceUsd;
             if (
-              data.marketCapData.rewardSupply !== undefined &&
-              data.marketCapData.rewardSupply !== null
+              payload.marketCapData.circulatingSupply !== undefined &&
+              payload.marketCapData.circulatingSupply !== null &&
+              Number.isFinite(payload.marketCapData.circulatingSupply)
             ) {
-              metricsUpdate.rewardSupply = data.marketCapData.rewardSupply;
+              metricsUpdate.circulatingSupply = payload.marketCapData.circulatingSupply;
+            }
+            if (
+              payload.marketCapData.rewardSupply !== undefined &&
+              payload.marketCapData.rewardSupply !== null
+            ) {
+              metricsUpdate.rewardSupply = payload.marketCapData.rewardSupply;
             }
           }
 
-          if (data.bondingData?.currentSupply) {
-            const supply = parseFloat(data.bondingData.currentSupply);
+          if (payload.bondingData?.currentSupply) {
+            const supply = parseFloat(payload.bondingData.currentSupply);
             if (Number.isFinite(supply) && supply > 0) {
               metricsUpdate.circulatingSupply = supply;
             }
@@ -185,7 +190,7 @@ export const useRealtimeMetrics = (
     // Set up polling interval
     pollingIntervalRef.current = setInterval(fetchMetrics, pollingInterval);
     log('Started REST polling fallback', { interval: pollingInterval });
-  }, [tokenAddress, fallbackToPolling, pollingInterval, log]);
+  }, [tokenAddress, fallbackToPolling, pollingInterval, log, getHealthUrl]);
 
   const stopPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -195,34 +200,21 @@ export const useRealtimeMetrics = (
     }
   }, [log]);
 
-  // 🔥 NEW: Stop heartbeat monitoring
-  const stopHeartbeatMonitor = useCallback(() => {
-    if (heartbeatMonitorRef.current) {
-      clearInterval(heartbeatMonitorRef.current);
-      heartbeatMonitorRef.current = null;
-      log('Stopped heartbeat monitor');
+  const closeSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+      log('Closed SSE stream');
     }
   }, [log]);
 
   const disconnect = useCallback(() => {
     log('Disconnecting...');
-
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
+    closeSSE();
     stopPolling();
-    stopHeartbeatMonitor(); // 🔥 NEW: Stop heartbeat monitor on disconnect
-
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
     setIsConnected(false);
     setIsConnecting(false);
-  }, [log, stopPolling, stopHeartbeatMonitor]);
+  }, [log, closeSSE, stopPolling]);
 
   const connect = useCallback(async () => {
     if (!tokenAddress) {
@@ -230,241 +222,138 @@ export const useRealtimeMetrics = (
       return;
     }
 
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      log('Already connected');
-      return;
-    }
-
-    if (wsRef.current?.readyState === WebSocket.CONNECTING) {
-      log('Already connecting');
-      return;
-    }
-
     setIsConnecting(true);
     setError(null);
     usePollingRef.current = false;
+    closeSSE();
 
-    // 🔥 FIX: Fetch initial data via REST BEFORE WebSocket connects
-    // This ensures initial data loads first, then WebSocket streams updates
-    // Prevents race condition where WebSocket messages arrive before initial state
+    const tryPolling = () => {
+      if (!mountedRef.current || !fallbackToPolling) return;
+      usePollingRef.current = true;
+      startPolling();
+      setIsConnecting(false);
+    };
+
+    // Prefer SSE when in browser and useSSE is true
+    if (typeof window !== 'undefined' && useSSE) {
+      const streamUrl = getStreamUrl();
+      log('Connecting to SSE stream', streamUrl);
+      try {
+        const es = new EventSource(streamUrl);
+        eventSourceRef.current = es;
+
+        es.onopen = () => {
+          if (mountedRef.current) {
+            setIsConnected(true);
+            setIsConnecting(false);
+            log('✅ SSE stream open');
+          }
+        };
+
+        es.onmessage = (event: MessageEvent) => {
+          if (!mountedRef.current) return;
+          try {
+            const raw = typeof event.data === 'string' ? event.data : '';
+            const payload = JSON.parse(raw) as Record<string, unknown>;
+            if (payload.success === false) {
+              setError((payload.error as string) || 'Stream error');
+              return;
+            }
+            const next = payloadToRealtimeMetrics(tokenAddress, payload);
+            setMetrics(next);
+            setError(null);
+          } catch (e) {
+            log('SSE message parse error', e);
+          }
+        };
+
+        es.onerror = () => {
+          if (!mountedRef.current) return;
+          log('SSE error, falling back to polling');
+          es.close();
+          eventSourceRef.current = null;
+          setIsConnected(false);
+          setError(null);
+          tryPolling();
+        };
+      } catch (err) {
+        log('SSE connect failed, falling back to polling', err);
+        if (mountedRef.current) {
+          setError(null);
+          tryPolling();
+        }
+      }
+      return;
+    }
+
+    // No SSE: initial fetch + polling
+    const healthPath = getHealthUrl();
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const response = await fetch(
-        `${apiUrl}/api/v1/tokens/${tokenAddress}/health?chainId=8453&currency=usd`,
-      );
+      const response = await fetch(healthPath);
       const data = await response.json();
+      const payload = data.success && data.data ? data.data : null;
 
-      if (data.success && mountedRef.current) {
+      if (payload && mountedRef.current) {
         const initialMetrics: RealtimeMetrics = {
           tokenAddress: tokenAddress.toLowerCase(),
           timestamp: Date.now(),
         };
-
-        if (data.metricsData) {
-          initialMetrics.marketCapUsd = data.metricsData.marketCapUsd;
-          initialMetrics.volume24hUsd = data.metricsData.volume24hUsd;
-          initialMetrics.volume24hAces = data.metricsData.volume24hAces;
-          initialMetrics.liquidityUsd = data.metricsData.liquidityUsd;
-          initialMetrics.liquiditySource = data.metricsData.liquiditySource;
+        if (payload.metricsData) {
+          initialMetrics.marketCapUsd = payload.metricsData.marketCapUsd;
+          initialMetrics.volume24hUsd = payload.metricsData.volume24hUsd;
+          initialMetrics.volume24hAces = payload.metricsData.volume24hAces;
+          initialMetrics.liquidityUsd = payload.metricsData.liquidityUsd;
+          initialMetrics.liquiditySource = payload.metricsData.liquiditySource;
         }
-
-        if (data.marketCapData) {
-          initialMetrics.currentPriceUsd = data.marketCapData.currentPriceUsd;
-          // 🔥 NEW: Extract rewardSupply for reward calculations
+        if (payload.marketCapData) {
+          initialMetrics.currentPriceUsd = payload.marketCapData.currentPriceUsd;
           if (
-            data.marketCapData.rewardSupply !== undefined &&
-            data.marketCapData.rewardSupply !== null
+            payload.marketCapData.circulatingSupply !== undefined &&
+            payload.marketCapData.circulatingSupply !== null &&
+            Number.isFinite(payload.marketCapData.circulatingSupply)
           ) {
-            initialMetrics.rewardSupply = data.marketCapData.rewardSupply;
+            initialMetrics.circulatingSupply = payload.marketCapData.circulatingSupply;
+          }
+          if (
+            payload.marketCapData.rewardSupply !== undefined &&
+            payload.marketCapData.rewardSupply !== null
+          ) {
+            initialMetrics.rewardSupply = payload.marketCapData.rewardSupply;
           }
         }
-
-        if (data.bondingData?.currentSupply) {
-          const supply = parseFloat(data.bondingData.currentSupply);
+        if (payload.bondingData?.currentSupply) {
+          const supply = parseFloat(payload.bondingData.currentSupply);
           if (Number.isFinite(supply) && supply > 0) {
             initialMetrics.circulatingSupply = supply;
           }
         }
-
-        if (mountedRef.current) {
-          setMetrics(initialMetrics);
-          setError(null);
-        }
-        log('✅ Initial data loaded, now connecting WebSocket');
-      }
-    } catch (err) {
-      // Don't set error here - let WebSocket attempt connection first
-      log('Initial data fetch failed, will retry via WebSocket', err);
-    }
-
-    // 🔥 FIX: Only connect to WebSocket after initial data is loaded
-    if (!mountedRef.current) return;
-
-    try {
-      const wsUrl = `${WS_BASE_URL}/api/v1/ws/metrics/${tokenAddress}`;
-      log('Connecting to', wsUrl);
-
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        log('WebSocket connected');
-        setIsConnected(true);
-        setIsConnecting(false);
+        setMetrics(initialMetrics);
         setError(null);
-        usePollingRef.current = false;
-        reconnectAttemptRef.current = 0; // Reset reconnection counter on success
-        stopPolling(); // Stop polling when WebSocket connects
-
-        // 🔥 NEW: Start heartbeat monitoring
-        setConnectionHealth({ lastHeartbeat: Date.now(), isHealthy: true });
-        stopHeartbeatMonitor(); // Clear any existing monitor
-
-        const HEARTBEAT_INTERVAL = 30000; // Backend sends every 30s
-        const HEARTBEAT_TIMEOUT = 60000; // 60s timeout (2x interval + grace period)
-
-        heartbeatMonitorRef.current = setInterval(() => {
-          if (!mountedRef.current) return;
-
-          setConnectionHealth((prev) => {
-            if (prev.lastHeartbeat === 0) {
-              return prev; // Haven't received first heartbeat yet
-            }
-
-            const timeSinceLastHeartbeat = Date.now() - prev.lastHeartbeat;
-
-            // If no heartbeat for 60s, connection is likely dead
-            if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT) {
-              log('❌ Heartbeat timeout (60s+), zombie connection detected, forcing reconnect');
-              // Force immediate reconnect
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.close();
-              }
-              return { ...prev, isHealthy: false };
-            }
-
-            // If no heartbeat for 45s, log warning but don't reconnect yet
-            if (timeSinceLastHeartbeat > 45000 && prev.isHealthy) {
-              log('⚠️ Heartbeat delayed (45s+), connection may be degraded');
-              return { ...prev, isHealthy: false };
-            }
-
-            return prev;
-          });
-        }, 10000); // Check every 10s
-
-        log('Started heartbeat monitoring');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-
-          // 🔥 IMPROVEMENT: Handle heartbeat ping/pong
-          if (message.type === 'ping') {
-            // Respond to server ping with pong
-            ws.send(JSON.stringify({ type: 'pong' }));
-
-            // 🔥 NEW: Track heartbeat health
-            setConnectionHealth({
-              lastHeartbeat: Date.now(),
-              isHealthy: true,
-            });
-            log('✅ Heartbeat received, connection healthy');
-            return;
-          }
-
-          if (message.type === 'metrics') {
-            if (mountedRef.current) {
-              // 🔥 FIX: Always create new object reference to ensure React detects changes
-              // Even if values are the same, creating a new object ensures re-renders
-              const metricsData = message.data as RealtimeMetrics;
-              setMetrics({
-                ...metricsData,
-                timestamp: metricsData.timestamp || Date.now(),
-              });
-              setError(null);
-            }
-          } else if (message.type === 'subscribed') {
-            log('Subscribed to metrics updates', message.data);
-          } else if (message.type === 'error') {
-            const errorMsg = message.message || 'WebSocket error';
-            log('Server error', errorMsg);
-            if (mountedRef.current) {
-              setError(errorMsg);
-              // Fallback to polling on error
-              if (fallbackToPolling && !usePollingRef.current) {
-                usePollingRef.current = true;
-                startPolling();
-              }
-            }
-          } else if (message.type === 'warning') {
-            log('Warning', message.message);
-          }
-        } catch (err) {
-          log('Error parsing message', err);
-        }
-      };
-
-      ws.onerror = (event) => {
-        log('WebSocket error', event);
-        if (mountedRef.current) {
-          setError('WebSocket connection error');
-          // Fallback to polling on error
-          if (fallbackToPolling && !usePollingRef.current) {
-            usePollingRef.current = true;
-            startPolling();
-          }
-        }
-      };
-
-      ws.onclose = (event) => {
-        log('WebSocket closed', { code: event.code, reason: event.reason });
-        setIsConnected(false);
-        setIsConnecting(false);
-
-        if (mountedRef.current) {
-          // Auto-reconnect with exponential backoff if enabled and appropriate
-          if (autoReconnect && shouldReconnect(event.code)) {
-            const delay = getReconnectDelay(reconnectAttemptRef.current);
-            reconnectAttemptRef.current += 1;
-
-            log(
-              `Reconnecting in ${formatReconnectDelay(delay)} (attempt ${reconnectAttemptRef.current})...`,
-            );
-
-            reconnectTimeoutRef.current = setTimeout(() => {
-              if (mountedRef.current) {
-                connect();
-              }
-            }, delay);
-          } else if (fallbackToPolling && !usePollingRef.current) {
-            // Fallback to polling if reconnect is disabled
-            log('Not reconnecting, falling back to polling');
-            usePollingRef.current = true;
-            startPolling();
-          }
-        }
-      };
-
-      wsRef.current = ws;
+        log('✅ Initial data loaded from Next.js API');
+      }
     } catch (err) {
-      log('Failed to create WebSocket', err);
-      setIsConnecting(false);
-      setError('Failed to create WebSocket connection');
-      // Fallback to polling
-      if (fallbackToPolling && !usePollingRef.current) {
-        usePollingRef.current = true;
-        startPolling();
+      log('Initial fetch failed', err);
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load metrics');
       }
     }
+
+    if (!mountedRef.current) return;
+    if (fallbackToPolling && !usePollingRef.current) {
+      usePollingRef.current = true;
+      startPolling();
+    }
+    setIsConnecting(false);
   }, [
     tokenAddress,
-    autoReconnect,
-    reconnectDelay,
+    useSSE,
     fallbackToPolling,
     log,
+    getHealthUrl,
+    getStreamUrl,
     startPolling,
-    stopPolling,
+    closeSSE,
+    sseIntervalMs,
   ]);
 
   useEffect(() => {

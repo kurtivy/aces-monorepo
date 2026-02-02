@@ -3,6 +3,19 @@ import { DexApi, type DexQuoteResponse } from '@/lib/api/dex';
 import { DEFAULT_SLIPPAGE_BPS } from '@/lib/swap/constants';
 import type { PaymentAsset } from '@/lib/swap/types';
 
+/** Short-lived quote cache to avoid repeated requests for the same params (e.g. rapid re-focus). */
+const QUOTE_CACHE_TTL_MS = 2500;
+const quoteCache = new Map<string, { data: DexQuoteResponse; timestamp: number }>();
+
+function getQuoteCacheKey(
+  tokenAddress: string,
+  inputAsset: string,
+  amount: string,
+  slippageBps: number,
+): string {
+  return `${tokenAddress}:${inputAsset}:${amount}:${slippageBps}`;
+}
+
 interface UseDexQuoteProps {
   tokenAddress?: string;
   amount: string;
@@ -53,6 +66,7 @@ export function useDexQuote({
 
   /**
    * Validate if we have all required data to fetch a quote
+   * Only fetch when user has entered a valid amount (not empty, not "0", etc.)
    */
   const canFetchQuote = useCallback((): boolean => {
     if (!isDexMode || !enabled) {
@@ -64,7 +78,8 @@ export function useDexQuote({
     }
 
     const trimmedAmount = (amount || '').trim();
-    if (!trimmedAmount) {
+    // Don't fetch if amount is empty, "0", or invalid
+    if (!trimmedAmount || trimmedAmount === '0' || trimmedAmount === '0.') {
       return false;
     }
 
@@ -78,39 +93,34 @@ export function useDexQuote({
 
   /**
    * Fetch quote from DEX API
+   * Only fetches when user has entered a valid amount
    */
   const fetchQuote = useCallback(async (): Promise<void> => {
     if (!canFetchQuote()) {
       setQuote(null);
       setError(null);
+      setLoading(false);
       return;
     }
+
+    const inputAsset = activeTab === 'sell' ? 'TOKEN' : paymentAsset;
+    const cacheKey = getQuoteCacheKey(tokenAddress!, inputAsset, amount, slippageBps);
+    const cached = quoteCache.get(cacheKey);
+    const now = Date.now();
+    const useCached = cached && now - cached.timestamp <= QUOTE_CACHE_TTL_MS;
 
     try {
       cancelledRef.current = false;
       const myId = ++requestIdRef.current;
-      setLoading(true);
-      setError(null);
 
-      // console.log('[useDexQuote] 🔄 Fetching quote...', {
-      //   tokenAddress,
-      //   amount,
-      //   paymentAsset,
-      //   activeTab,
-      //   slippageBps,
-      // });
-
-      // Determine input asset based on tab
-      // On Sell tab: selling the token for ACES
-      // On Buy tab: buying the token with ACES/USDC/USDT/wETH
-      const inputAsset = activeTab === 'sell' ? 'TOKEN' : paymentAsset;
-
-      // console.log('[useDexQuote] 📤 Calling DexApi.getQuote with:', {
-      //   tokenAddress,
-      //   inputAsset,
-      //   amount,
-      //   slippageBps,
-      // });
+      if (useCached) {
+        setQuote(cached!.data);
+        setError(null);
+        setLoading(false);
+      } else {
+        setLoading(true);
+        setError(null);
+      }
 
       const result = await DexApi.getQuote(tokenAddress!, {
         inputAsset,
@@ -127,15 +137,9 @@ export function useDexQuote({
       }
 
       if (result.success && result.data) {
+        quoteCache.set(cacheKey, { data: result.data, timestamp: Date.now() });
         setQuote(result.data);
         setError(null);
-        // console.log('[useDexQuote] ✅ Quote fetched successfully:', {
-        //   inputAsset,
-        //   expectedOutput: result.data.expectedOutput,
-        //   path: result.data.path,
-        //   routes: result.data.routes,
-        //   fullData: result.data,
-        // });
       } else {
         setQuote(null);
         const errorMessage =
@@ -183,6 +187,7 @@ export function useDexQuote({
 
   /**
    * Auto-fetch quote when dependencies change
+   * Only fetches when user has entered a valid amount (not on initial mount with empty amount)
    */
   useEffect(() => {
     // Reset quote state if not in DEX mode
@@ -193,12 +198,15 @@ export function useDexQuote({
       return;
     }
 
-    // Reset and fetch new quote
+    // Only fetch if we have a valid amount (user has entered something)
+    // Don't fetch on initial mount with empty amount
     if (canFetchQuote()) {
       fetchQuote();
     } else {
+      // Clear quote state when amount is invalid or empty
       setQuote(null);
       setError(null);
+      setLoading(false);
     }
 
     // Cleanup: cancel request on unmount or when dependencies change

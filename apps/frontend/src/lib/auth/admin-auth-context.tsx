@@ -5,6 +5,7 @@ import {
   signInAdmin,
   signOutAdmin,
   isAdminAuthenticated,
+  getAdminAccessToken,
   type AdminAuthResult,
 } from '@/lib/supabase/admin-auth';
 
@@ -15,6 +16,7 @@ interface AdminAuthContextType {
   login: (email: string, password: string) => Promise<AdminAuthResult>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  getAdminAccessToken: () => Promise<string | null>;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | null>(null);
@@ -99,6 +101,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     login,
     logout,
     checkAuth,
+    getAdminAccessToken,
   };
 
   return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;

@@ -105,96 +105,13 @@ export function useUnifiedSwap({
         }
 
         // ==========================================
-        // BONDING MODE
+        // BONDING MODE REMOVED - All swaps are DEX-only now
         // ==========================================
-
-        // Case 1: ACES → RWA (Direct bonding curve buy)
-        if (sellToken === 'ACES' && isBuyRwa) {
-          if (!factoryContract || !acesContract) {
-            throw new Error('Bonding curve contracts not available');
-          }
-
-          if (quote.strategy !== 'bonding-direct') {
-            throw new Error('Invalid quote for bonding curve buy');
-          }
-
-          const amountWei = ethers.utils.parseUnits(quote.outputAmount, 18);
-          const service = new BondingCurveSwapService(
-            factoryContract,
-            acesContract,
-            factoryProxyAddress,
-          );
-
-          return await service.buyTokens({
-            tokenAddress,
-            amount: amountWei,
-            slippageBps: quote.slippageBps,
-            onStatus: updateStatus,
-          });
-        }
-
-        // Case 2: RWA → ACES (Direct bonding curve sell)
-        if (isSellRwa && buyToken === 'ACES') {
-          if (!factoryContract || !acesContract) {
-            throw new Error('Bonding curve contracts not available');
-          }
-
-          if (quote.strategy !== 'bonding-direct') {
-            throw new Error('Invalid quote for bonding curve sell');
-          }
-
-          const amountWei = ethers.utils.parseUnits(amount, 18);
-          const service = new BondingCurveSwapService(
-            factoryContract,
-            acesContract,
-            factoryProxyAddress,
-          );
-
-          return await service.sellTokens({
-            tokenAddress,
-            amount: amountWei,
-            onStatus: updateStatus,
-          });
-        }
-
-        // Case 3: ETH/USDC/USDT → RWA (Multi-hop via AcesSwap contract)
-        // Flow: USDC/USDT/ETH → WETH → ACES (via DEX) → RWA (via bonding curve)
-        if (['ETH', 'USDC', 'USDT'].includes(sellToken) && isBuyRwa) {
-          if (!acesSwapContract.isDeployed) {
-            throw new Error(
-              'Multi-token swaps coming soon! AcesSwap contract not yet deployed. ' +
-                'Please use ACES to purchase tokens for now, or wait until 100% bonded for full token support.',
-            );
-          }
-
-          if (quote.strategy !== 'bonding-multihop') {
-            throw new Error('Invalid quote for multi-hop swap');
-          }
-
-          const rwaAmount = quote.outputAmount;
-
-          updateStatus('Preparing multi-hop swap...');
-
-          // Route to correct AcesSwap function based on input token
-          if (sellToken === 'USDT') {
-            return await acesSwapContract.swapUSDTForToken({
-              amountIn: amount,
-              tokenAddress,
-              launchpadTokenAmount: rwaAmount,
-            });
-          } else if (sellToken === 'USDC') {
-            return await acesSwapContract.swapUSDCForToken({
-              amountIn: amount,
-              tokenAddress,
-              launchpadTokenAmount: rwaAmount,
-            });
-          } else if (sellToken === 'ETH') {
-            return await acesSwapContract.swapETHForToken({
-              ethAmountIn: amount,
-              tokenAddress,
-              launchpadTokenAmount: rwaAmount,
-            });
-          }
+        
+        // All bonding curve swaps have been removed
+        // If we reach here and it's not a DEX swap, throw an error
+        if (quote.strategy !== 'dex') {
+          throw new Error('Only DEX swaps are supported. Bonding curve functionality has been removed.');
         }
 
         // Unsupported swap combination

@@ -33,48 +33,16 @@ export default function PlaceBidsInterface({
   onBidPlaced,
   variant = 'default',
 }: PlaceBidsInterfaceProps) {
-  const { user, getAccessToken } = useAuth();
+  const { user, getAccessToken, connectWallet } = useAuth();
   const [offerAmount, setOfferAmount] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [eligibility, setEligibility] = useState<{ isEligible: boolean; message: string } | null>(
-    null,
-  );
   const [highestBid, setHighestBid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showAllBids, setShowAllBids] = useState(false);
   const [allBids, setAllBids] = useState<Bid[]>([]);
   const [bidsLoading, setBidsLoading] = useState(false);
-
-  // Check user eligibility when component mounts or user changes
-  useEffect(() => {
-    const checkEligibility = async () => {
-      if (!user) {
-        setEligibility({ isEligible: false, message: 'Please connect your wallet to place bids' });
-        return;
-      }
-
-      try {
-        const token = await getAccessToken();
-        if (!token) {
-          setEligibility({ isEligible: false, message: 'Unable to authenticate' });
-          return;
-        }
-
-        const result = await BidsApi.checkBiddingEligibility(token);
-        if (result.success && result.data) {
-          setEligibility(result.data);
-        } else {
-          setEligibility({ isEligible: false, message: 'Unable to verify eligibility' });
-        }
-      } catch (err) {
-        setEligibility({ isEligible: false, message: 'Error checking eligibility' });
-      }
-    };
-
-    checkEligibility();
-  }, [user, getAccessToken]);
 
   // Load highest bid and all bids when component mounts
   useEffect(() => {
@@ -163,8 +131,8 @@ export default function PlaceBidsInterface({
   };
 
   const handleSubmit = async () => {
-    if (!user || !eligibility?.isEligible) {
-      setError('You must be verified to place bids');
+    if (!user) {
+      setError('Connect your wallet to place a bid');
       return;
     }
 
@@ -334,42 +302,41 @@ export default function PlaceBidsInterface({
             <div className="space-y-3">
               <div className="flex justify-between items-center p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
                 <span className="text-sm text-[#DCDDCC] font-proxima-nova">
-                  Current Highest Bid
+                  {highestBid ? 'Current high bid' : 'Reserve price'}
                 </span>
                 <div className="text-right">
                   <div className="text-sm font-medium text-white">
-                    {highestBid ? `$${highestBid.toLocaleString()}` : 'No bids have been made yet'}
+                    {highestBid
+                      ? `$${highestBid.toLocaleString()}`
+                      : startingBidPrice != null
+                        ? `$${Number(startingBidPrice).toLocaleString()}`
+                        : 'No bids yet'}
                   </div>
                   <div className="text-xs text-[#DCDDCC] font-proxima-nova">
-                    {highestBid ? 'Current Best' : 'Be the first to bid'}
+                    {highestBid ? 'Current best' : 'Be the first to bid'}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Verification Status */}
-          {eligibility && (
-            <div
-              className={`p-3 rounded-lg border ${
-                eligibility.isEligible
-                  ? 'border-green-500/20 bg-green-500/10'
-                  : 'border-red-500/20 bg-red-500/10'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {eligibility.isEligible ? (
-                  <CheckCircle className="h-4 w-4 text-green-400" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                )}
-                <span
-                  className={`text-sm ${
-                    eligibility.isEligible ? 'text-green-400' : 'text-red-400'
-                  }`}
+          {/* Connect wallet CTA when not connected */}
+          {!user && (
+            <div className="p-3 rounded-lg border border-[#D0B284]/30 bg-[#D0B284]/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-[#D0B284]" />
+                  <span className="text-sm text-[#D0B284]">
+                    Connect your wallet to place a bid.
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => connectWallet()}
+                  className="shrink-0 border border-[#D0B284]/80 text-[#D0B284] hover:bg-[#D0B284]/10"
                 >
-                  {eligibility.message}
-                </span>
+                  Connect wallet
+                </Button>
               </div>
             </div>
           )}
@@ -483,7 +450,7 @@ export default function PlaceBidsInterface({
                   disabled={
                     !offerAmount ||
                     Number.parseFloat(offerAmount) <= 0 ||
-                    !eligibility?.isEligible ||
+                    !user ||
                     isOwner ||
                     !isLive ||
                     loading

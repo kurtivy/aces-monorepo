@@ -1,17 +1,12 @@
 'use client';
 
-import { useMemo, useEffect, useState } from 'react';
-import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
-import { parseUnits, formatUnits } from 'viem';
-import { LoadingDots } from '../left-column/token-details/loading-dots';
-
 interface BondingProgressSectionProps {
   tokenAddress?: string;
   chainId?: number;
   percentageOverride?: number;
   isBondedOverride?: boolean;
   tokenSymbol?: string;
-  // Optional: Pass bonding data from parent to avoid duplicate API calls
+  // Optional: Pass bonding data from parent to avoid duplicate API calls (deprecated - not used)
   bondingDataFromParent?: {
     bondingPercentage: number;
     isBonded: boolean;
@@ -21,22 +16,12 @@ interface BondingProgressSectionProps {
 }
 
 export function BondingProgressSection({
-  tokenAddress,
-  chainId,
-  percentageOverride,
-  isBondedOverride,
   tokenSymbol = 'RWA',
-  bondingDataFromParent,
 }: BondingProgressSectionProps) {
   // Bonding curve removed - always show 100% sold out
-  // Keep hook call for backwards compatibility but don't use the data
-  const hookData = useTokenBondingData(tokenAddress, bondingDataFromParent ? undefined : chainId);
-
-  // Always show 100% sold out (bonding curve removed)
+  // No API calls needed
   const bondingPercentage = 100;
   const isBonded = true;
-  const currentSupply = bondingDataFromParent?.currentSupply ?? hookData.currentSupply;
-  const tokensBondedAt = bondingDataFromParent?.tokensBondedAt ?? hookData.tokensBondedAt;
   const loading = false; // No loading state needed - always 100%
 
   const barGradient = `linear-gradient(90deg,
@@ -47,114 +32,6 @@ export function BondingProgressSection({
         #D0B284 100%
       )`;
 
-  // Single source of truth for default bonding target used during loading/unknown
-  const DEFAULT_BONDING_TARGET = 700000000; // 700M tokens (bonding curve supply)
-
-  const supplyMetrics = useMemo(() => {
-    // Check if we have valid data - currentSupply can be '0' which is valid
-    if (currentSupply === undefined || currentSupply === null || currentSupply === '') {
-      return {
-        totalSupplyValue: null as number | null,
-        soldPercentage: null as number | null,
-        remainingDisplay: null as string | null,
-      };
-    }
-
-    const totalSupplyValue = Number.parseFloat(currentSupply);
-    // Prefer contract-provided tokensBondedAt when present and > 0; otherwise use default during loading
-    const parsedTarget = Number.parseFloat(tokensBondedAt || '');
-    const hasValidTarget = Number.isFinite(parsedTarget) && parsedTarget > 0;
-    const bondingTarget = hasValidTarget ? parsedTarget : DEFAULT_BONDING_TARGET;
-
-    if (
-      !Number.isFinite(totalSupplyValue) ||
-      totalSupplyValue < 0 ||
-      !Number.isFinite(bondingTarget)
-    ) {
-      return {
-        totalSupplyValue: null,
-        soldPercentage: null,
-        remainingDisplay: null,
-      };
-    }
-
-    const soldPercentage = hasValidTarget
-      ? Math.min(100, (totalSupplyValue / bondingTarget) * 100)
-      : null;
-
-    let remainingTokensNumber = Math.max(0, bondingTarget - totalSupplyValue);
-    let remainingWei: bigint | null = null;
-
-    try {
-      const supplyWei = parseUnits(currentSupply, 18);
-      const targetWei = hasValidTarget
-        ? parseUnits(tokensBondedAt as string, 18)
-        : parseUnits(DEFAULT_BONDING_TARGET.toString(), 18);
-      remainingWei = targetWei > supplyWei ? targetWei - supplyWei : BigInt(0);
-      remainingTokensNumber = Number.parseFloat(formatUnits(remainingWei, 18));
-    } catch {
-      remainingWei = null;
-    }
-
-    let remainingDisplay: string | null = null;
-    if (Number.isFinite(remainingTokensNumber)) {
-      if (remainingWei !== null) {
-        const remainingStr = formatUnits(remainingWei, 18);
-        if (!remainingStr.includes('.')) {
-          remainingDisplay = Number.parseFloat(remainingStr).toLocaleString(undefined, {
-            maximumFractionDigits: 2,
-          });
-        } else {
-          const [intPart, rawFraction = ''] = remainingStr.split('.');
-          const fraction = rawFraction.replace(/0+$/, '');
-
-          if (intPart !== '0') {
-            remainingDisplay = Number.parseFloat(`${intPart}.${fraction || '0'}`).toLocaleString(
-              undefined,
-              {
-                maximumFractionDigits: 2,
-              },
-            );
-          } else if (fraction) {
-            const firstSignificant = fraction.search(/[1-9]/);
-            if (firstSignificant === -1) {
-              remainingDisplay = '0';
-            } else {
-              const leadingZeros = fraction.slice(0, firstSignificant);
-              const significantDigits = fraction
-                .slice(firstSignificant, firstSignificant + 6)
-                .replace(/0+$/, '');
-              remainingDisplay = `0.${leadingZeros}${significantDigits}`;
-            }
-          } else {
-            remainingDisplay = '0';
-          }
-        }
-      } else if (remainingTokensNumber >= 1) {
-        remainingDisplay = remainingTokensNumber.toLocaleString(undefined, {
-          maximumFractionDigits: 2,
-        });
-      } else if (remainingTokensNumber > 0) {
-        remainingDisplay = remainingTokensNumber.toLocaleString(undefined, {
-          maximumFractionDigits: 12,
-        });
-      } else {
-        remainingDisplay = '0';
-      }
-    }
-
-    return {
-      totalSupplyValue,
-      soldPercentage,
-      remainingDisplay,
-    };
-  }, [currentSupply, tokensBondedAt]);
-
-  // Bonding curve removed - always 100%
-  const combinedPercentage = 100;
-
-  // useEffect(() => {}, [tokenAddress, chainId, currentSupply, tokensBondedAt, supplyMetrics]);
-
   // Bonding curve removed - always show as sold out
   const soldOutState = true;
   const combinedIsBonded = true;
@@ -163,18 +40,10 @@ export function BondingProgressSection({
 
   return (
     <div className="">
-      {/* Remaining supply display */}
-      {loading && !soldOutState ? (
-        <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold flex items-center justify-center gap-1">
-          <LoadingDots className="text-sm text-[#D0B284]/80" />
-        </div>
-      ) : (
-        (soldOutState || supplyMetrics.remainingDisplay) && (
-          <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold">
-            {soldOutState ? 'Sold out' : `${supplyMetrics.remainingDisplay} ${tokenSymbol} left`}
-          </div>
-        )
-      )}
+      {/* Remaining supply display - always sold out */}
+      <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold">
+        Sold out
+      </div>
 
       <div className="relative w-full overflow-hidden px-2 py-1">
         <div className="relative h-4 w-full group">

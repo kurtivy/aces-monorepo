@@ -57,6 +57,8 @@ interface UseCanvasInteractionsProps {
   ) => void;
   // DRVN: Optional click callback for DRVN tile
   onDrvnClick?: (image: ImageInfo) => void;
+  // Home area: optional client-side nav to /drops (avoids full page reload)
+  onNavigateToDrops?: () => void;
 }
 
 // MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
@@ -132,6 +134,7 @@ export const useCanvasInteractions = ({
   onAuctionIconClick, // Auction icon click handler - enabled
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
   onDrvnClick,
+  onNavigateToDrops,
 }: UseCanvasInteractionsProps) => {
   const { capabilities } = useDeviceCapabilities();
   const [isPanning, setIsPanning] = useState(false);
@@ -152,13 +155,14 @@ export const useCanvasInteractions = ({
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const boundsRef = useRef<DOMRect | null>(null);
 
-  // FEATURED SECTION: Updated area coordinates
+  // FEATURED SECTION: Area coordinates - MUST match canvas renderer draw layout exactly
+  // Home area (buttons): 2×0.3 at bottom - matches draw-home-area
   const homeAreaWidth = unitSize * 2;
-  const homeAreaHeight = unitSize;
+  const homeAreaHeight = unitSize * 0.3;
   const homeAreaWorldX = -unitSize;
-  const homeAreaWorldY = -unitSize;
+  const homeAreaWorldY = -unitSize * 0.3;
 
-  // FEATURED SECTION: New featured area coordinates - MUST match canvas renderer coordinates
+  // Featured area: 2×1.95 in the middle - matches draw
   const featuredAreaWidth = unitSize * 2;
   const featuredAreaHeight = unitSize * 1.95; // Match canvas renderer: 65% height
   const featuredAreaWorldX = -unitSize;
@@ -338,14 +342,16 @@ export const useCanvasInteractions = ({
 
       // AUCTION ICON: Check auction icon click first (highest priority)
       if (featuredImage) {
-        // Convert world coordinates to screen coordinates for auction icon bounds check
+        // Convert world coordinates to canvas coordinates for auction icon bounds check
+        // (Must use same coordinate system as drawing - canvas pixels, not viewport)
         const canvas = canvasRef.current;
         if (canvas) {
-          const rect = canvas.getBoundingClientRect();
-          const screenX = worldX * viewState.scale + viewState.x + rect.left;
-          const screenY = worldY * viewState.scale + viewState.y + rect.top;
+          boundsRef.current = canvas.getBoundingClientRect();
+          // Canvas coords: worldX * scale + viewState.x (matches draw coordinate space)
+          const clickCanvasX = worldX * viewState.scale + viewState.x;
+          const clickCanvasY = worldY * viewState.scale + viewState.y;
 
-          // Get auction icon bounds in screen coordinates
+          // Featured area bounds in canvas coordinates (matches drawFeaturedSection)
           const screenFeaturedX = featuredAreaWorldX * viewState.scale + viewState.x;
           const screenFeaturedY = featuredAreaWorldY * viewState.scale + viewState.y;
           const screenFeaturedWidth = featuredAreaWidth * viewState.scale;
@@ -373,10 +379,10 @@ export const useCanvasInteractions = ({
           );
 
           if (
-            screenX >= iconBounds.x &&
-            screenX <= iconBounds.x + iconBounds.width &&
-            screenY >= iconBounds.y &&
-            screenY <= iconBounds.y + iconBounds.height
+            clickCanvasX >= iconBounds.x &&
+            clickCanvasX <= iconBounds.x + iconBounds.width &&
+            clickCanvasY >= iconBounds.y &&
+            clickCanvasY <= iconBounds.y + iconBounds.height
           ) {
             // Auction icon clicked - trigger handler with symbol and title
             const ticker = featuredImage.metadata.ticker;
@@ -410,18 +416,10 @@ export const useCanvasInteractions = ({
       if (
         isHomeArea(worldX, worldY, homeAreaWorldX, homeAreaWorldY, homeAreaWidth, homeAreaHeight)
       ) {
-        // Home area button handling (simplified to 2 buttons)
-        const buttonWidth = homeAreaWidth / 2;
-
-        // CREATE button (left half) - Launch page removed, redirect to drops
-        if (worldX >= homeAreaWorldX && worldX < homeAreaWorldX + buttonWidth) {
-          window.location.href = '/drops';
-          return;
-        }
-
-        // DROPS button (right half)
-        if (worldX >= homeAreaWorldX + buttonWidth && worldX < homeAreaWorldX + homeAreaWidth) {
-          window.location.href = '/drops';
+        // Home area button handling - use client-side nav if provided, else full reload
+        if (worldX >= homeAreaWorldX && worldX < homeAreaWorldX + homeAreaWidth) {
+          if (onNavigateToDrops) onNavigateToDrops();
+          else window.location.href = '/drops';
           return;
         }
         return;
@@ -469,7 +467,8 @@ export const useCanvasInteractions = ({
               worldY >= tokenPos.worldY &&
               worldY <= tokenPos.worldY + unitSize
             ) {
-              window.location.href = '/drops';
+              if (onNavigateToDrops) onNavigateToDrops();
+              else window.location.href = '/drops';
               return;
             }
           }
@@ -525,6 +524,7 @@ export const useCanvasInteractions = ({
       imagePlacementMap,
       setSelectedImage,
       onDrvnClick,
+      onNavigateToDrops,
     ],
   );
 
@@ -657,51 +657,11 @@ export const useCanvasInteractions = ({
       dragStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
       setIsPanning(true);
 
-      // Only prevent default for non-clickable areas to maintain native behavior
-      const coords = getWorldCoordinates(touch.clientX, touch.clientY);
-      if (coords) {
-        const { worldX, worldY } = coords;
-
-        // FEATURED SECTION: Check if touching featured area
-        const isTouchingFeatured =
-          featuredImage &&
-          isFeaturedArea(
-            worldX,
-            worldY,
-            featuredAreaWorldX,
-            featuredAreaWorldY,
-            featuredAreaWidth,
-            featuredAreaHeight,
-          );
-
-        const isTouchingHome = isHomeArea(
-          worldX,
-          worldY,
-          homeAreaWorldX,
-          homeAreaWorldY,
-          homeAreaWidth,
-          homeAreaHeight,
-        );
-
-        const isClickable = isTouchingFeatured || isTouchingHome;
-        if (!isClickable) {
-          event.preventDefault();
-        }
-      }
+      // Always preventDefault – we handle taps in touchEnd to avoid 300ms delayed
+      // synthetic click which can cause reload/navigation glitches
+      event.preventDefault();
     },
-    [
-      stopMomentum,
-      getWorldCoordinates,
-      homeAreaWorldX,
-      homeAreaWorldY,
-      homeAreaWidth,
-      homeAreaHeight,
-      featuredAreaWorldX, // FEATURED SECTION: Add featured area coordinates
-      featuredAreaWorldY,
-      featuredAreaWidth,
-      featuredAreaHeight,
-      featuredImage, // FEATURED SECTION: Add featured image
-    ],
+    [stopMomentum],
   );
 
   const handleTouchMove = useCallback(

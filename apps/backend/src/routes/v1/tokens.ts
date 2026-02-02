@@ -8,7 +8,7 @@ import { TokenHolderService } from '../../services/token-holder-service';
 import { priceCacheService } from '../../services/price-cache-service';
 import { getNetworkConfig, type SupportedChainId } from '../../config/network.config';
 
-const BASE_MAINNET_CHAIN_ID = 8453;
+const DEFAULT_CHAIN_ID = 8453; // Base Mainnet
 
 interface TokenParams {
   address: string;
@@ -17,7 +17,7 @@ interface TokenParams {
 /**
  * Calculate DEX volume from Aerodrome pool Swap events via Alchemy RPC
  * Note: Bonding curve removed - all tokens are DEX-only
- * 
+ *
  * @param tokenAddress - Token contract address
  * @param poolAddress - Aerodrome pool address
  * @param startTime - Start of time window
@@ -32,13 +32,13 @@ async function getDexVolumeFromAlchemy(
   startTime: Date,
   endTime: Date,
   acesUsdPrice: number,
-  chainId: SupportedChainId = BASE_MAINNET_CHAIN_ID,
+  chainId: SupportedChainId = DEFAULT_CHAIN_ID,
 ): Promise<{ acesVolume: number; usdVolume: number }> {
   // TODO: Implement Alchemy RPC query for Aerodrome pool Swap events
   // Query Swap events from pool contract and calculate volume
   // For now, return 0 - volume will be calculated from pool state if needed
   // DexScreener iframe handles trade display on frontend
-  
+
   if (!poolAddress) {
     return { acesVolume: 0, usdVolume: 0 };
   }
@@ -132,7 +132,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
       try {
         const { address } = request.params;
         const { chainId: chainIdStr, currency = 'usd' } = request.query;
-        const chainId = chainIdStr ? parseInt(chainIdStr) : BASE_MAINNET_CHAIN_ID;
+        const chainId = chainIdStr ? parseInt(chainIdStr) : DEFAULT_CHAIN_ID;
 
         // 🔥 LOAD TEST FIX: Check cache first with Stale-While-Revalidate
         const cacheKey = `${address.toLowerCase()}:${chainId}:${currency}`;
@@ -782,7 +782,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           try {
             const holderCountPromise = tokenHolderService.getHolderCount(
               address,
-              chainId ?? BASE_MAINNET_CHAIN_ID,
+              chainId ?? DEFAULT_CHAIN_ID,
             );
             // Add 10-second timeout to prevent hanging
             holderCount = await Promise.race([
@@ -890,7 +890,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             //   twentyFourHoursAgo,
             //   now,
             //   acesUsdPrice,
-            //   chainId ?? BASE_MAINNET_CHAIN_ID,
+            //   chainId ?? DEFAULT_CHAIN_ID,
             // );
             // volume24hAces = alchemyVolume.acesVolume;
             // volume24hUsd = alchemyVolume.usdVolume;
@@ -909,7 +909,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         // Calculate DEX liquidity by querying pool contract directly
         if (typeof poolAddress === 'string' && poolAddress.length > 0) {
           try {
-            const effectiveChainId = (chainId ?? BASE_MAINNET_CHAIN_ID) as SupportedChainId;
+            const effectiveChainId = (chainId ?? DEFAULT_CHAIN_ID) as SupportedChainId;
             const networkConfig = getNetworkConfig(effectiveChainId);
 
             if (!networkConfig.rpcUrl) {
@@ -988,7 +988,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         if (liquidityUsd === null) {
           try {
             // Query contract directly for ACES balance (source of truth)
-            const effectiveChainId = (chainId ?? BASE_MAINNET_CHAIN_ID) as SupportedChainId;
+            const effectiveChainId = (chainId ?? DEFAULT_CHAIN_ID) as SupportedChainId;
             const networkConfig = getNetworkConfig(effectiveChainId);
 
             if (!networkConfig.rpcUrl || !networkConfig.acesFactoryProxy) {
@@ -1036,10 +1036,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               'Calculated bonding curve liquidity from contract',
             );
           } catch (error) {
-            fastify.log.error(
-              { error, address },
-              'Failed to compute DEX liquidity from contract',
-            );
+            fastify.log.error({ error, address }, 'Failed to compute DEX liquidity from contract');
             liquidityUsd = null;
           }
         }

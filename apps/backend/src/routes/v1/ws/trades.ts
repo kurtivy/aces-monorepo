@@ -477,7 +477,6 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               });
             }
           }
-
         });
 
         // Handle ping/pong for keep-alive

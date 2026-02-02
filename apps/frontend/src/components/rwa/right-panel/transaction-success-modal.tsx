@@ -49,9 +49,9 @@ export function TransactionSuccessModal({
   const [copied, setCopied] = useState(false);
 
   const explorerUrl =
-    chainId === 8453
-      ? `https://basescan.org/tx/${transactionHash}`
-      : `https://sepolia.basescan.org/tx/${transactionHash}`;
+    chainId === 84532
+      ? `https://sepolia.basescan.org/tx/${transactionHash}`
+      : `https://basescan.org/tx/${transactionHash}`;
 
   const itemName = title || tokenSymbol;
   const pageUrl = `https://aces.fun/rwa/${tokenSymbol}`;

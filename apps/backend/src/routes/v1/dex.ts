@@ -1387,7 +1387,6 @@ export async function dexRoutes(fastify: FastifyInstance) {
             const poolAddress = tokenMetadata?.poolAddress ?? null;
             const dexLiveAt = tokenMetadata?.dexLiveAt;
 
-
             const acesUsdPriceService = (fastify as any).acesUsdPriceService;
             let acesUsdPrice: number | null = null;
 

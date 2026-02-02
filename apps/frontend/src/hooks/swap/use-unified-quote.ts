@@ -1,7 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useBondingQuote } from './use-bonding-quote';
 import { useDexQuote } from './use-dex-quote';
-import { BondingApi } from '@/lib/bonding-curve/bonding';
 import type { PaymentAsset } from '@/lib/swap/types';
 import { DEFAULT_SLIPPAGE_BPS } from '@/lib/swap/constants';
 import {
@@ -10,9 +8,6 @@ import {
   applySlippageToUsdValue,
 } from '@/lib/swap/fee-calculator';
 import { clampAmountDecimals } from '@/lib/swap/amount-utils';
-import { multiHopQuoteCache } from '@/lib/swap/quote-cache';
-import { multiHopQuoteDeduplicator } from '@/lib/swap/request-deduplicator';
-import { retryWithBackoff, RetryPresets } from '@/lib/swap/retry-with-backoff';
 
 interface UseUnifiedQuoteProps {
   // Token info
@@ -67,13 +62,13 @@ export interface UnifiedQuoteResult {
   // Metadata
   path: string[];
   slippageBps: number;
-  strategy: 'bonding-direct' | 'bonding-multihop' | 'dex' | 'none';
+  strategy: 'dex' | 'none'; // Bonding curve removed - only DEX quotes
 
   // Actions
   refreshQuote: () => void;
 }
 
-type QuoteStrategy = 'bonding-direct' | 'bonding-multihop' | 'dex' | 'none';
+type QuoteStrategy = 'dex' | 'none'; // Bonding curve removed
 
 const PAYMENT_ASSET_DECIMALS: Record<PaymentAsset, number> = {
   ACES: 18,
@@ -84,10 +79,8 @@ const PAYMENT_ASSET_DECIMALS: Record<PaymentAsset, number> = {
 };
 
 /**
- * Unified quote hook that intelligently routes to:
- * - Direct bonding curve (ACES ↔ RWA in bonding mode via API)
- * - Multi-hop bonding (WETH/USDC/USDT → RWA in bonding mode, requires AcesSwap)
- * - DEX quotes (all pairs in DEX mode via Aerodrome)
+ * Unified quote hook - DEX-only mode
+ * All quotes go through DEX (Aerodrome) - bonding curve removed
  */
 export function useUnifiedQuote({
   tokenAddress,
@@ -98,14 +91,6 @@ export function useUnifiedQuote({
   slippageBps = DEFAULT_SLIPPAGE_BPS,
   enabled = true,
 }: UseUnifiedQuoteProps): UnifiedQuoteResult {
-  // Multi-hop quote state (for ETH/USDC/USDT → RWA in bonding mode)
-  const [multiHopQuote, setMultiHopQuote] = useState<MultiHopQuoteData | null>(null);
-  const [multiHopLoading, setMultiHopLoading] = useState(false);
-  const [multiHopError, setMultiHopError] = useState<string | null>(null);
-
-  // Track previous amount to detect significant changes for multi-hop quotes
-  const previousMultiHopAmountRef = useRef<string>('');
-
   // Lightweight client fallback for ACES input USD in DEX mode
   const [dexUsdFallback, setDexUsdFallback] = useState<{
     inputUsd: string | null;
@@ -113,59 +98,19 @@ export function useUnifiedQuote({
   } | null>(null);
 
   /**
-   * Determine quote strategy based on tokens and mode
+   * Determine quote strategy - always DEX (bonding curve removed)
    */
   const quoteStrategy = useMemo((): QuoteStrategy => {
     if (!enabled || !tokenAddress) {
       return 'none';
     }
 
-    const isRwaToken = (token: string) =>
-      token.toLowerCase() === tokenAddress.toLowerCase() || token === 'TOKEN';
-
-    const isSellRwa = isRwaToken(sellToken);
-    const isBuyRwa = isRwaToken(buyToken);
-
-    // DEX Mode: Always use Aerodrome quotes
-    if (isDexMode) {
-      return 'dex';
-    }
-
-    // Bonding Mode routing:
-
-    // ACES → RWA: Direct bonding curve buy
-    if (sellToken === 'ACES' && isBuyRwa) {
-      return 'bonding-direct';
-    }
-
-    // RWA → ACES: Direct bonding curve sell
-    if (isSellRwa && buyToken === 'ACES') {
-      return 'bonding-direct';
-    }
-
-    // WETH/ETH/USDC/USDT → RWA: Multi-hop via AcesSwap contract
-    // (WETH/ETH/USDC/USDT → WETH → ACES via DEX, then ACES → RWA via bonding)
-    if (['WETH', 'ETH', 'USDC', 'USDT'].includes(sellToken as string) && isBuyRwa) {
-      return 'bonding-multihop';
-    }
-
-    // Unsupported combination
-    return 'none';
-  }, [enabled, tokenAddress, sellToken, buyToken, isDexMode]);
+    // All tokens are DEX-only now
+    return 'dex';
+  }, [enabled, tokenAddress]);
 
   /**
-   * Direct bonding curve quote (for ACES ↔ RWA direct swaps)
-   */
-  const bondingQuote = useBondingQuote({
-    tokenAddress,
-    amount,
-    inputAsset: sellToken === 'ACES' ? 'ACES' : 'TOKEN',
-    enabled: quoteStrategy === 'bonding-direct' && enabled,
-    slippageBps,
-  });
-
-  /**
-   * DEX quote (for all swaps in DEX mode via Aerodrome)
+   * DEX quote (for all swaps via Aerodrome)
    */
   const dexQuote = useDexQuote({
     tokenAddress,
@@ -175,7 +120,7 @@ export function useUnifiedQuote({
       sellToken === 'ACES' || ['WETH', 'ETH', 'USDC', 'USDT'].includes(sellToken as string)
         ? 'buy'
         : 'sell',
-    isDexMode,
+    isDexMode: true, // Always DEX mode now
     enabled: quoteStrategy === 'dex' && enabled,
     slippageBps,
   });
@@ -185,7 +130,6 @@ export function useUnifiedQuote({
     let cancelled = false;
 
     const needsFallback =
-      isDexMode &&
       sellToken === 'ACES' &&
       enabled &&
       (amount || '').trim() !== '' &&
@@ -204,13 +148,9 @@ export function useUnifiedQuote({
 
     (async () => {
       try {
-        // Resolve API URL with proper fallback priority
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_URL ||
-          (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-            ? 'http://localhost:3002'
-            : 'https://acesbackend-production.up.railway.app'); // Update this to your Railway URL
-        const res = await fetch(`${baseUrl}/api/v1/prices/aces-usd`).catch(() => null);
+        // Use relative path for Next.js API route
+        const baseUrl = typeof window !== 'undefined' ? '' : process.env.NEXT_PUBLIC_API_URL || '';
+        const res = await fetch(`${baseUrl}/api/prices/aces-usd`).catch(() => null);
         if (!res || !res.ok) {
           if (!cancelled) setDexUsdFallback(null);
           return;
@@ -233,121 +173,7 @@ export function useUnifiedQuote({
     return () => {
       cancelled = true;
     };
-  }, [isDexMode, sellToken, enabled, amount, dexQuote.quote?.inputUsdValue]);
-
-  /**
-   * Fetch multi-hop quote for WETH/USDC/USDT → RWA with optimization layers
-   * Backend calculates WETH/USDC/USDT → ACES via DEX pools
-   * Then we calculate ACES → RWA via bonding curve
-   */
-  const fetchMultiHopQuote = useCallback(async () => {
-    if (quoteStrategy !== 'bonding-multihop' || !tokenAddress || !amount) {
-      setMultiHopQuote(null);
-      return;
-    }
-
-    if (!['WETH', 'ETH', 'USDC', 'USDT'].includes(sellToken as string)) {
-      setMultiHopError('Invalid input asset for multi-hop');
-      return;
-    }
-
-    try {
-      setMultiHopLoading(true);
-      setMultiHopError(null);
-
-      // Normalize ETH to WETH for backend API
-      const apiAsset = sellToken === 'ETH' ? 'WETH' : sellToken;
-      const decimals = PAYMENT_ASSET_DECIMALS[apiAsset as PaymentAsset] ?? 18;
-      const safeAmount = clampAmountDecimals(amount, decimals);
-
-      // Check cache first, but bypass if amount changed significantly
-      const cacheParams = { inputAsset: apiAsset, slippageBps };
-      const previousAmount = previousMultiHopAmountRef.current;
-      const cachedQuote = multiHopQuoteCache.get(
-        tokenAddress,
-        safeAmount,
-        cacheParams,
-        previousAmount,
-      );
-
-      if (cachedQuote) {
-        console.log('[useUnifiedQuote] 💰 Multi-hop cache hit!', {
-          tokenAddress,
-          amount: safeAmount,
-          inputAsset: apiAsset,
-        });
-        setMultiHopQuote(cachedQuote);
-        setMultiHopLoading(false);
-        // Update previous amount ref
-        previousMultiHopAmountRef.current = safeAmount;
-        return;
-      }
-
-      console.log('[useUnifiedQuote] 🔄 Fetching multi-hop quote with optimization layers...', {
-        tokenAddress,
-        amount: safeAmount,
-        inputAsset: apiAsset,
-        slippageBps,
-      });
-
-      // Use deduplicator and retry logic
-      const result = await multiHopQuoteDeduplicator.execute(
-        { tokenAddress, amount: safeAmount, inputAsset: apiAsset, slippageBps },
-        async () => {
-          const retryResult = await retryWithBackoff(async () => {
-            const apiResult = await BondingApi.getMultiHopQuote(tokenAddress, {
-              inputAsset: apiAsset as 'WETH' | 'USDC' | 'USDT',
-              amount: safeAmount,
-              slippageBps,
-            });
-
-            if (!apiResult.success || !apiResult.data) {
-              const errorMsg =
-                typeof apiResult.error === 'string'
-                  ? apiResult.error
-                  : 'Failed to fetch multi-hop quote';
-              throw new Error(errorMsg);
-            }
-
-            return apiResult.data;
-          }, RetryPresets.QUOTE_FAST);
-
-          if (!retryResult.success || !retryResult.data) {
-            throw retryResult.error || new Error('Failed to fetch multi-hop quote');
-          }
-
-          return retryResult.data;
-        },
-      );
-
-      // Store in cache
-      multiHopQuoteCache.set(tokenAddress, safeAmount, result, cacheParams);
-
-      setMultiHopQuote(result as MultiHopQuoteData);
-      // Update previous amount ref
-      previousMultiHopAmountRef.current = safeAmount;
-      console.log('[useUnifiedQuote] ✅ Multi-hop quote processed');
-    } catch (error) {
-      console.error('[useUnifiedQuote] ❌ Multi-hop quote failed:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to fetch quote';
-      setMultiHopError(errorMsg);
-      setMultiHopQuote(null);
-    } finally {
-      setMultiHopLoading(false);
-    }
-  }, [quoteStrategy, tokenAddress, sellToken, amount, slippageBps]);
-
-  /**
-   * Auto-fetch multi-hop quote when strategy changes
-   */
-  useEffect(() => {
-    if (quoteStrategy === 'bonding-multihop' && enabled) {
-      fetchMultiHopQuote();
-    } else {
-      setMultiHopQuote(null);
-      setMultiHopError(null);
-    }
-  }, [quoteStrategy, enabled, fetchMultiHopQuote]);
+  }, [sellToken, enabled, amount, dexQuote.quote?.inputUsdValue]);
 
   /**
    * For multi-hop, backend now calculates the final RWA output
@@ -388,54 +214,6 @@ export function useUnifiedQuote({
     };
 
     switch (quoteStrategy) {
-      case 'bonding-direct': {
-        // Apply platform fees to output USD value
-        const feeBps = getPlatformFeeBps(sellToken);
-        const adjustedOutputUsd = applyFeeToUsdValue(
-          bondingQuote.quote?.outputUsdValue || null,
-          feeBps,
-        );
-        // Apply slippage to get minimum output USD
-        const minOutputUsd = applySlippageToUsdValue(adjustedOutputUsd, slippageBps);
-
-        return {
-          ...baseResult,
-          quote: bondingQuote.quote,
-          outputAmount: bondingQuote.quote?.expectedOutput || '0',
-          outputUsdValue: adjustedOutputUsd,
-          minOutputUsdValue: minOutputUsd,
-          inputUsdValue: bondingQuote.quote?.inputUsdValue || null,
-          needsMultiHop: false,
-          path: bondingQuote.quote?.path || [sellToken, buyToken],
-          loading: bondingQuote.loading,
-          error: bondingQuote.error,
-          refreshQuote: bondingQuote.refetchQuote,
-        };
-      }
-
-      case 'bonding-multihop': {
-        // Apply platform fees to output USD value
-        const feeBps = getPlatformFeeBps(sellToken);
-        const adjustedOutputUsd = applyFeeToUsdValue(multiHopQuote?.outputUsdValue || null, feeBps);
-        // Apply slippage to get minimum output USD
-        const minOutputUsd = applySlippageToUsdValue(adjustedOutputUsd, slippageBps);
-
-        return {
-          ...baseResult,
-          quote: multiHopQuote, // Use multi-hop quote data directly from backend
-          outputAmount: multiHopQuote?.expectedRwaOutput || '0', // Backend calculates final RWA tokens
-          outputUsdValue: adjustedOutputUsd,
-          minOutputUsdValue: minOutputUsd,
-          inputUsdValue: multiHopQuote?.inputUsdValue || null,
-          intermediateAcesAmount: multiHopQuote?.expectedAcesAmount,
-          needsMultiHop: true,
-          path: multiHopQuote?.path || [sellToken, 'ACES', buyToken],
-          loading: multiHopLoading,
-          error: multiHopError,
-          refreshQuote: fetchMultiHopQuote,
-        };
-      }
-
       case 'dex': {
         // Prefer server-provided USD values; fallback to client-computed values if present.
         // If server provided input USD but omitted output USD for TOKEN, mirror input USD.
@@ -468,15 +246,10 @@ export function useUnifiedQuote({
     }
   }, [
     quoteStrategy,
-    bondingQuote,
     dexQuote,
-    multiHopQuote,
-    multiHopLoading,
-    multiHopError,
     sellToken,
     buyToken,
     slippageBps,
-    fetchMultiHopQuote,
     dexUsdFallback,
   ]);
 

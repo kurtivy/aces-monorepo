@@ -1,8 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
-import { ChangeEvent, MouseEvent as ReactMouseEvent, useEffect, useState } from 'react';
+import { ChangeEvent, MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -63,45 +62,21 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     onOpenTerms,
   } = props;
 
-  const { user, getAccessToken } = useAuth();
+  const { user, getAccessToken, connectWallet } = useAuth();
   const [offerAmount, setOfferAmount] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [eligibility, setEligibility] = useState<{ isEligible: boolean; message: string } | null>(
-    null,
-  );
   const [highestBid, setHighestBid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const hasUserClearedInputRef = useRef(false);
 
   useEffect(() => {
     const loadInitialData = async () => {
       setInitialLoading(true);
 
-      // Check eligibility
-      if (!user) {
-        setEligibility({ isEligible: false, message: 'Please connect your wallet to place bids' });
-      } else {
-        try {
-          const token = await getAccessToken();
-          if (!token) {
-            setEligibility({ isEligible: false, message: 'Unable to authenticate' });
-          } else {
-            const result = await BidsApi.checkBiddingEligibility(token);
-            if (result.success && result.data) {
-              setEligibility(result.data);
-            } else {
-              setEligibility({ isEligible: false, message: 'Unable to verify eligibility' });
-            }
-          }
-        } catch {
-          setEligibility({ isEligible: false, message: 'Error checking eligibility' });
-        }
-      }
-
-      // Load bid data
       try {
         const highestResult = await BidsApi.getHighestBid(listingId);
         if (highestResult.success && highestResult.data) {
@@ -115,7 +90,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     };
 
     loadInitialData();
-  }, [user, getAccessToken, listingId]);
+  }, [listingId]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -135,7 +110,12 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     return () => clearInterval(interval);
   }, [listingId, highestBid]);
 
-  // Set default offer amount to highest bid + $1000
+  // Reset "user cleared" flag when listing changes (fresh state)
+  useEffect(() => {
+    hasUserClearedInputRef.current = false;
+  }, [listingId]);
+
+  // Set default offer amount to highest bid + $1000 (only on initial load, not when user clears)
   useEffect(() => {
     const highestBidValue = typeof highestBid === 'number' ? highestBid : null;
     const reservePrice = startingBidPrice ?? null;
@@ -145,8 +125,8 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
         : null;
     const displayHighestBid = highestBidValue ?? fallbackHighestBid;
 
-    // Only set default if offer amount is empty and we have a highest bid
-    if (!offerAmount && displayHighestBid != null) {
+    // Only set default if offer amount is empty, user hasn't cleared it, and we have a highest bid
+    if (!offerAmount && !hasUserClearedInputRef.current && displayHighestBid != null) {
       const defaultOffer = displayHighestBid + 1000;
       setOfferAmount(formatOfferValue(defaultOffer.toString()));
     }
@@ -156,6 +136,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     const inputValue = event.target.value.replace(/,/g, '');
 
     if (inputValue === '') {
+      hasUserClearedInputRef.current = true;
       setOfferAmount('');
       return;
     }
@@ -168,8 +149,8 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   };
 
   const handleSubmit = async () => {
-    if (!user || !eligibility?.isEligible) {
-      setError('You must be verified to place bids');
+    if (!user) {
+      setError('Connect your wallet to place a bid');
       return;
     }
 
@@ -216,7 +197,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     try {
       const token = await getAccessToken();
       if (!token) {
-        setError('Unable to authenticate');
+        setError('Connect your wallet to place a bid');
         return;
       }
 
@@ -231,6 +212,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
 
       if (result.success) {
         setSuccess('Bid placed successfully!');
+        hasUserClearedInputRef.current = false;
         setOfferAmount('');
         setMessage('');
         setHighestBid(amount);
@@ -254,16 +236,17 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   const imageAlt = itemTitle ? `${itemTitle} preview` : 'Asset preview';
   const offerInputId = `offer-amount-${listingId}`;
   const messageInputId = `offer-message-${listingId}`;
-  const isIneligible = eligibility?.isEligible === false;
+  const isNotConnected = !user;
   const numericOfferAmount = parseOfferAmountValue(offerAmount);
   const termsCheckboxId = `accept-terms-${listingId}`;
+  const reservePrice = startingBidPrice ?? null;
   const reserveStatusMessage =
-    startingBidPrice != null
-      ? (highestBid ?? 0) >= startingBidPrice
+    reservePrice != null
+      ? (highestBid ?? 0) >= reservePrice
         ? 'Reserve price met'
         : 'Reserve price not met'
       : highestBid
-        ? 'Current Highest Bid'
+        ? 'Current highest bid'
         : 'Be the first to bid';
 
   const handleTermsLinkClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -273,7 +256,6 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   };
 
   const highestBidValue = typeof highestBid === 'number' ? highestBid : null;
-  const reservePrice = startingBidPrice ?? null;
   const fallbackHighestBid =
     highestBidValue == null && reservePrice != null
       ? Math.round((reservePrice * 0.75) / 100) * 100
@@ -284,7 +266,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     Boolean(offerAmount) &&
     !Number.isNaN(numericOfferAmount) &&
     numericOfferAmount > 0 &&
-    Boolean(eligibility?.isEligible) &&
+    Boolean(user) &&
     !isOwner &&
     isLive &&
     !loading &&
@@ -331,7 +313,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
           <div className="flex flex-col">
             <div>
               <h2 className="text-lg font-semibold text-white font-neue-world">
-                {isIneligible ? 'CURRENT BID' : 'MAKE OFFER'}
+                {isNotConnected ? 'CURRENT BID' : 'MAKE OFFER'}
               </h2>
             </div>
             <div className="text-left">
@@ -352,24 +334,25 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
               </div>
             </div>
 
-            {isIneligible && (
+            {isNotConnected && (
               <div className="flex flex-col items-start gap-3 rounded-xl border border-[#D0B284]/30 bg-[#D0B284]/10 p-4">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-5 w-5 text-[#D0B284]" />
                   <span className="text-sm text-[#D0B284]">
-                    {eligibility?.message || 'Bidding is currently unavailable for your account.'}
+                    Connect your wallet to place a bid.
                   </span>
                 </div>
-                <p className="text-sm text-[#DCDDCC] font-proxima-nova">
-                  You need to register first before you can bid.{' '}
-                  <Link href="/verify" className="text-[#D0B284] underline underline-offset-2">
-                    Register
-                  </Link>
-                </p>
+                <Button
+                  type="button"
+                  onClick={() => connectWallet()}
+                  className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#151c16] font-semibold"
+                >
+                  Connect wallet
+                </Button>
               </div>
             )}
 
-            {!isIneligible && (
+            {!isNotConnected && (
               <>
                 {error && (
                   <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">

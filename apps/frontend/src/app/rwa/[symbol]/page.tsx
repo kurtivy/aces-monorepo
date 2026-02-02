@@ -70,7 +70,10 @@ export default function RWAItemPage() {
   const initialSectionIndex = tokenDetailsSectionIndex >= 0 ? tokenDetailsSectionIndex : 0;
 
   const navigation = useSectionNavigation(sections, initialSectionIndex);
-  const { listing, loading, error, isLive, launchDate, isLaunched } = useListingBySymbol(symbol);
+  const { listing, health, loading, error, isLive, launchDate, isLaunched } = useListingBySymbol(
+    symbol,
+    { includeHealth: true },
+  );
   const { capabilities } = useDeviceCapabilities();
 
   // Chat state for V2 layout
@@ -155,6 +158,7 @@ export default function RWAItemPage() {
                   {/* Left Column V2 - New Dashboard */}
                   <LeftColumnNavigationV2
                     listing={listing}
+                    health={health}
                     loading={loading}
                     isChatOpen={isChatOpen}
                     onChatToggle={() => setIsChatOpen((prev) => !prev)}

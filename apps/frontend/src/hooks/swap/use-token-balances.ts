@@ -25,7 +25,7 @@ export function useTokenBalances({
   signer,
   factoryContract,
   tokenAddress,
-  chainId = 84532, // Default to Base Sepolia
+  chainId = 8453, // Default to Base Mainnet
 }: UseTokenBalancesProps) {
   // Balance state
   const [acesBalance, setAcesBalance] = useState<string>('0');

@@ -140,14 +140,16 @@ export class ChartAggregationService {
       counterTokenAddress?: string;
       limit?: number;
     } = {},
-  ): Promise<Array<{
-    blockTime: Date;
-    priceInAces: string;
-    priceInUsd: string;
-    amountToken: string;
-    volumeUsd: string;
-    side: 'buy' | 'sell';
-  }>> {
+  ): Promise<
+    Array<{
+      blockTime: Date;
+      priceInAces: string;
+      priceInUsd: string;
+      amountToken: string;
+      volumeUsd: string;
+      side: 'buy' | 'sell';
+    }>
+  > {
     // TODO: Implement Alchemy RPC query for Aerodrome pool Swap events
     // For now, return empty array - volume will be calculated from pool state if needed
     // DexScreener iframe handles trade display on frontend
@@ -534,7 +536,7 @@ export class ChartAggregationService {
         currentCandleTimestamp,
       );
 
-      // Note: If no bonding curve data found and token is graduated, 
+      // Note: If no bonding curve data found and token is graduated,
       // the frontend uses DexScreener iframe for DEX chart data
       if (candles.length === 0) {
         console.log(

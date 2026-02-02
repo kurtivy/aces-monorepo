@@ -154,7 +154,11 @@ export function useAcesFactoryContract(
           rpcUrl = 'https://mainnet.base.org';
         }
 
-        const readOnlyProv = new ethers.providers.JsonRpcProvider(rpcUrl);
+        // Explicitly specify network to avoid detection errors
+        const readOnlyProv = new ethers.providers.JsonRpcProvider(rpcUrl, {
+          name: currentChainId === 8453 ? 'base' : 'base-sepolia',
+          chainId: currentChainId,
+        });
         setReadOnlyProvider(readOnlyProv);
 
         // Create read-only factory contract

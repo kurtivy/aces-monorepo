@@ -4,6 +4,7 @@ import { TokenHeaderSection } from './token-header-section';
 import { TokenMetricsSection } from './token-metrics-section';
 import { ChatSection } from './chat-section';
 import { DatabaseListing } from '@/types/rwa/section.types';
+import type { TokenHealthData } from '@/lib/api/token-health';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTokenMetrics } from '@/hooks/use-token-metrics';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -12,6 +13,8 @@ import { BondingProgressSection } from '@/components/rwa/right-panel/bonding-pro
 
 interface LeftColumnNavigationV2Props {
   listing?: DatabaseListing | null;
+  /** Pre-fetched token health (from listing?includeHealth=1). Enables instant DATA panel without extra request. */
+  health?: TokenHealthData | null;
   loading?: boolean;
   isChatOpen?: boolean;
   onChatToggle?: () => void;
@@ -19,11 +22,11 @@ interface LeftColumnNavigationV2Props {
 
 export function LeftColumnNavigationV2({
   listing,
+  health,
   loading,
   isChatOpen: externalChatOpen,
   onChatToggle,
 }: LeftColumnNavigationV2Props) {
-  // Use unified token metrics hook for all data (price, bonding, metrics)
   const {
     metrics,
     currentPriceUsd,
@@ -32,7 +35,7 @@ export function LeftColumnNavigationV2({
     rewardSupply,
     marketCapUsd,
     loading: metricsLoading,
-  } = useTokenMetrics(listing?.token?.contractAddress);
+  } = useTokenMetrics(listing?.token?.contractAddress, { initialHealth: health ?? undefined });
 
   // 🔥 FIX: Prioritize WebSocket marketCapUsd over calculated values for real-time updates
   const fallbackMarketCap = useMemo(() => {

@@ -1,32 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Zap, X } from 'lucide-react';
 import { useChainSwitching, SUPPORTED_CHAINS } from '@/hooks/contracts/use-chain-switching';
 import { useAccount } from 'wagmi';
 
+const CHAIN_SYNC_GRACE_MS = 2200;
+
 export default function NetworkBanner() {
   const { isConnected, chainId } = useAccount();
   const { isSwitching, switchToChain } = useChainSwitching();
   const [isDismissed, setIsDismissed] = useState(false);
+  const [pastGracePeriod, setPastGracePeriod] = useState(false);
 
-  // Debug logging (remove in production)
-  // useEffect(() => {
-  //   console.log('NetworkBanner debug:', {
-  //     isConnected,
-  //     chainId,
-  //     isOnBaseMainnet,
-  //     isDismissed,
-  //     shouldShow,
-  //   });
-  // }, [isConnected, chainId, isOnBaseMainnet, isDismissed, shouldShow]);
+  useEffect(() => {
+    const t = window.setTimeout(() => setPastGracePeriod(true), CHAIN_SYNC_GRACE_MS);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const hasResolvedChain = typeof chainId === 'number';
   const isOnBaseMainnet = chainId === SUPPORTED_CHAINS.BASE_MAINNET.id;
 
-  // Only show once wagmi knows the active chain, the wallet is connected, user isn't on Base, and they haven't dismissed
-  const shouldShow = isConnected && hasResolvedChain && !isOnBaseMainnet && !isDismissed;
+  // Only show after grace period (wagmi can report wrong chain on rehydration), when we have a
+  // resolved chain, wallet is connected, user is not on Base, and they haven't dismissed
+  const shouldShow =
+    pastGracePeriod && isConnected && hasResolvedChain && !isOnBaseMainnet && !isDismissed;
 
   const handleSwitchNetwork = async () => {
     try {

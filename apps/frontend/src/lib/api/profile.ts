@@ -1,29 +1,9 @@
 import type { ApiResponse } from '@aces/utils';
 
 function getProfileApiBaseUrl(): string {
-  // Use environment variable if available
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // For localhost development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:3002';
-  }
-
-  // Dynamic URL based on current deployment
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const href = window.location.href;
-
-    // Check for dev/git-dev branch
-    if (href.includes('git-dev') || hostname.includes('git-dev')) {
-      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-    }
-  }
-
-  // Production fallback (main branch and aces.fun)
-  return 'https://acesbackend-production.up.railway.app';
+  // Profile API (verify-or-create, me, etc.) lives in this Next.js app.
+  // Always use same-origin so requests hit /api/v1/users/* routes.
+  return '';
 }
 
 const API_BASE_URL = getProfileApiBaseUrl();

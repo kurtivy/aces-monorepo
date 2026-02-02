@@ -51,29 +51,9 @@ export interface BidsListResponse {
 
 export class BidsApi {
   private static getBaseUrl(): string {
-    // Use environment variable if available
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL;
-    }
-
-    // For localhost development
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return 'http://localhost:3002';
-    }
-
-    // Dynamic URL based on current deployment
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const href = window.location.href;
-
-      // Check for dev/git-dev branch
-      if (href.includes('git-dev') || hostname.includes('git-dev')) {
-        return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-      }
-    }
-
-    // Production fallback (main branch and aces.fun)
-    return 'https://acesbackend-production.up.railway.app';
+    // Bids API (eligibility, create, listing bids, etc.) lives in this Next.js app.
+    // Always use same-origin so requests hit /api/v1/bids/* routes.
+    return '';
   }
 
   private static async makeRequest<T>(
@@ -108,7 +88,6 @@ export class BidsApi {
     }
 
     const url = `${baseUrl}${endpoint}`;
-    console.log(`Making ${method} request to:`, url);
 
     try {
       const response = await fetch(url, requestOptions);
@@ -207,21 +186,27 @@ export class BidsApi {
   }
 
   /**
-   * Get highest bid for a listing
+   * Get highest bid for a listing.
+   * On failure (500, network, etc.) returns { success: true, data: null } so the UI
+   * never breaks; most listings have no bids.
    */
   static async getHighestBid(listingId: string): Promise<ApiResponse<Bid | null>> {
+    const url = `${this.getBaseUrl()}/api/v1/bids/listing/${listingId}/highest`;
     try {
-      const response = await this.makeRequest(`/api/v1/bids/listing/${listingId}/highest`, {
+      const response = await fetch(url, {
         method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
-
-      return response as ApiResponse<Bid | null>;
-    } catch (error) {
-      console.error('Error getting highest bid:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get highest bid',
-      };
+      if (!response.ok) {
+        return { success: true, data: null };
+      }
+      const body = await response.json();
+      return (
+        body?.data !== undefined ? body : { success: true, data: body }
+      ) as ApiResponse<Bid | null>;
+    } catch {
+      return { success: true, data: null };
     }
   }
 

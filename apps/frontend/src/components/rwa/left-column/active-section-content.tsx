@@ -237,7 +237,16 @@ export function ActiveSectionContent({
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">BIDDING</h4>
 
-        <HighestBidDisplay listingId={listing?.id || ''} />
+        <HighestBidDisplay
+          listingId={listing?.id || ''}
+          reservePrice={
+            listing?.startingBidPrice != null
+              ? parseFloat(listing.startingBidPrice)
+              : listing?.reservePrice != null
+                ? parseFloat(listing.reservePrice)
+                : undefined
+          }
+        />
       </div>
     </div>,
 

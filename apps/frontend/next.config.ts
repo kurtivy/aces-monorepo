@@ -90,6 +90,9 @@ const nextConfig: NextConfig = {
       'https://charting-library.tradingview-widget.com',
       'https://*.tradingview.com',
       'https://cca-lite.coinbase.com',
+      // Convex (realtime + HTTP)
+      'https://*.convex.cloud',
+      'wss://*.convex.cloud',
     ];
 
     // Add Cloudflare domains if enabled
@@ -525,6 +528,17 @@ const nextConfig: NextConfig = {
 
     // Configure remote patterns for Google Cloud Storage and Vercel Blob Storage
     remotePatterns: [
+      // Canvas/drops images served from aces.fun
+      {
+        protocol: 'https',
+        hostname: 'aces.fun',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.aces.fun',
+        pathname: '/**',
+      },
       {
         protocol: 'https',
         hostname: 'storage.googleapis.com',

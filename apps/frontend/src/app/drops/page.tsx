@@ -2,6 +2,8 @@
 
 import type React from 'react';
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import Footer from '@/components/ui/custom/footer';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
@@ -12,37 +14,74 @@ import PageLoader from '@/components/loading/page-loader';
 import { SAMPLE_METADATA } from '@/data/metadata';
 import type { UpcomingAsset } from '@/components/upcoming/upcoming-card';
 
-export default function UpcomingPage() {
-  const [isLoading, setIsLoading] = useState(true);
+function truncateDescription(description: string, maxLength: number = 150): string {
+  if (description.length <= maxLength) return description;
+  const truncated = description.substring(0, maxLength);
+  const lastSpace = truncated.lastIndexOf(' ');
+  const cutPoint = lastSpace > 0 ? lastSpace : maxLength;
+  return description.substring(0, cutPoint).trim() + '...';
+}
+
+/** Map Convex canvasItems doc to UpcomingAsset. Source of truth for live vs upcoming is Convex isLive. */
+function convexDocToUpcomingAsset(doc: {
+  id: string;
+  title: string;
+  description: string;
+  image?: string;
+  symbol?: string;
+  ticker?: string;
+  countdownDate?: string;
+  isLive: boolean;
+}): UpcomingAsset {
+  const symbol = doc.symbol ?? doc.ticker ?? '';
+  return {
+    id: doc.id,
+    title: doc.title,
+    description: truncateDescription(doc.description),
+    imageUrl: doc.image ?? '',
+    symbol: symbol.startsWith('$') ? symbol : `$${symbol}`,
+    startDate: doc.countdownDate ?? '',
+    category: 'WATCH',
+    comingSoon: !doc.isLive, // false → "Trade now!", true → "Coming Soon"
+  };
+}
+
+function getStaticUpcomingAssets(): UpcomingAsset[] {
+  const featuredMetadata = SAMPLE_METADATA.find((item) => item.id === '26');
+  const banksyMetadata = SAMPLE_METADATA.find((item) => item.id === '27');
+  const apMetadata = SAMPLE_METADATA.find((item) => item.id === '7');
+  const featuredAsset = featuredMetadata
+    ? convertMetadataToUpcomingAsset(featuredMetadata)
+    : undefined;
+  const banksyAsset = banksyMetadata
+    ? {
+        ...convertMetadataToUpcomingAsset(banksyMetadata),
+        symbol: 'ILLICIT',
+        comingSoon: false,
+        category: 'ART',
+      }
+    : undefined;
+  const apAsset = apMetadata ? convertMetadataToUpcomingAsset(apMetadata) : undefined;
+  return [banksyAsset, featuredAsset, apAsset].filter(Boolean) as UpcomingAsset[];
+}
+
+function DropsContentWithConvex() {
+  const convexItems = useQuery(api.canvasItems.listForDrops);
   const upcomingAssets = useMemo<UpcomingAsset[]>(() => {
-    const featuredMetadata = SAMPLE_METADATA.find((item) => item.id === '26');
-    const banksyMetadata = SAMPLE_METADATA.find((item) => item.id === '27');
-    const apMetadata = SAMPLE_METADATA.find((item) => item.id === '7');
+    if (convexItems != null && convexItems.length > 0) {
+      return convexItems.map(convexDocToUpcomingAsset);
+    }
+    return getStaticUpcomingAssets();
+  }, [convexItems]);
+  return <DropsPageInner upcomingAssets={upcomingAssets} />;
+}
 
-    const featuredAsset = featuredMetadata
-      ? convertMetadataToUpcomingAsset(featuredMetadata)
-      : undefined;
-    const banksyAsset = banksyMetadata
-      ? {
-          ...convertMetadataToUpcomingAsset(banksyMetadata),
-          symbol: 'ILLICIT', // Override with proper symbol for routing
-          comingSoon: false, // Changed to false - ILLICIT is now live!
-          category: 'ART', // Override category to show ART instead of default
-        }
-      : undefined;
-    const apAsset = apMetadata ? convertMetadataToUpcomingAsset(apMetadata) : undefined;
-
-    return [banksyAsset, featuredAsset, apAsset].filter(Boolean) as UpcomingAsset[];
-  }, []);
-
+function DropsPageInner({ upcomingAssets }: { upcomingAssets: UpcomingAsset[] }) {
+  const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
-    // Simulate initial page load
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
+    const timer = setTimeout(() => setIsLoading(false), 500);
     return () => clearTimeout(timer);
   }, []);
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#151c16]">
@@ -50,15 +89,11 @@ export default function UpcomingPage() {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen relative bg-[#151c16]">
-      {/* Header Component */}
       <div className="relative z-50">
         <AcesHeader />
       </div>
-
-      {/* ACES Background + Luxury Tiles */}
       <LuxuryAssetsBackground
         className="absolute inset-0 z-0"
         opacity={1}
@@ -68,8 +103,6 @@ export default function UpcomingPage() {
         topOffset={112}
         bandHeight={96}
       />
-
-      {/* Title band between header bottom and solid horizontal line */}
       <PageBandTitle
         title="Upcoming Schedule"
         contentWidth={1200}
@@ -83,21 +116,26 @@ export default function UpcomingPage() {
         contentLineOffset={8}
         offsetY={12}
       />
-
-      {/* Main Content - Fixed 1400px height for background images */}
       <div className="relative z-20 h-[1400px]">
-        {/* Scrollable grid container positioned underneath text */}
         <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <UpcomingGrid assets={upcomingAssets} />
-          {/* Bottom padding to ensure footer clearance */}
           <div className="h-24" />
         </div>
       </div>
-
-      {/* Footer - Fixed at bottom */}
       <div className="relative z-50">
         <Footer />
       </div>
     </div>
   );
+}
+
+export default function UpcomingPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) {
+    return <DropsPageInner upcomingAssets={getStaticUpcomingAssets()} />;
+  }
+  return <DropsContentWithConvex />;
 }

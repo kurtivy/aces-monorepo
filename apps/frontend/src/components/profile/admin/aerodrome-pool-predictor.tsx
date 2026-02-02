@@ -98,7 +98,11 @@ export function AerodromePoolPredictor() {
     async function fetchPoolImplementation() {
       try {
         // Use a public RPC provider for Base Mainnet
-        const provider = new ethers.providers.JsonRpcProvider('https://mainnet.base.org');
+        // Explicitly specify Base Mainnet network (chainId 8453) to avoid network detection errors
+        const provider = new ethers.providers.JsonRpcProvider('https://mainnet.base.org', {
+          name: 'base',
+          chainId: 8453,
+        });
         const factory = new ethers.Contract(V2_FACTORY_ADDRESS, V2_FACTORY_ABI, provider);
 
         const impl = await factory.implementation();

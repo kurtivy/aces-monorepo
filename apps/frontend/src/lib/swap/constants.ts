@@ -38,9 +38,9 @@ export const DEX_TOKEN_ADDRESSES = {
 /**
  * Get DEX token addresses for a specific chain
  */
-export function getDexTokenAddresses(chainId: number = 84532) {
+export function getDexTokenAddresses(chainId: number = 8453) {
   return (
-    DEX_TOKEN_ADDRESSES[chainId as keyof typeof DEX_TOKEN_ADDRESSES] || DEX_TOKEN_ADDRESSES[84532]
+    DEX_TOKEN_ADDRESSES[chainId as keyof typeof DEX_TOKEN_ADDRESSES] || DEX_TOKEN_ADDRESSES[8453]
   );
 }
 

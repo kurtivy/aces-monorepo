@@ -1,8 +1,9 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
 import NavMenu from '@/components/ui/custom/nav-menu';
 
@@ -14,9 +15,10 @@ export default function MobileRWAHeader({ title }: MobileRWAHeaderProps) {
   const router = useRouter();
   const [openDropdown, setOpenDropdown] = useState<'wallet' | 'nav' | null>(null);
 
-  const handleLogoClick = () => {
-    router.push('/');
-  };
+  // Prefetch home page when header mounts so logo click feels instant
+  useEffect(() => {
+    router.prefetch('/');
+  }, [router]);
 
   const handleWalletDropdownChange = (isOpen: boolean) => {
     setOpenDropdown(isOpen ? 'wallet' : null);
@@ -32,14 +34,19 @@ export default function MobileRWAHeader({ title }: MobileRWAHeaderProps) {
         {title ? <span className="sr-only">{title}</span> : null}
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
           <div className="flex items-center">
-            <button
-              type="button"
-              onClick={handleLogoClick}
+            <Link
+              href="/"
               className="w-8 h-8 flex items-center justify-center overflow-hidden rounded-full border border-[#D0B284]/20 bg-[#0f1510] transition-opacity duration-200 hover:opacity-80"
               aria-label="Go to ACES home"
             >
-              <Image src="/aces-logo.png" alt="ACES Logo" width={32} height={32} className="w-6 h-6 object-contain" />
-            </button>
+              <Image
+                src="/aces-logo.png"
+                alt="ACES Logo"
+                width={32}
+                height={32}
+                className="w-6 h-6 object-contain"
+              />
+            </Link>
           </div>
 
           <ConnectWalletProfile

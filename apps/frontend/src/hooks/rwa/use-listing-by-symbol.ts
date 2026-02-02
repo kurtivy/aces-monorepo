@@ -1,38 +1,109 @@
-// hooks/rwa/use-listing-by-symbol.ts
 import { useState, useEffect } from 'react';
 import type { DatabaseListing } from '@/types/rwa/section.types';
+import type { TokenHealthData } from '@/lib/api/token-health';
 import { validateAndWarnAddress } from '@/lib/validation/address';
 
-const resolveApiBaseUrl = () => {
-  // Use environment variable if available
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-  }
-
-  // For localhost development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:3002';
-  }
-
-  // Dynamic URL based on current deployment
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const href = window.location.href;
-
-    // Check for dev/git-dev branch
-    if (href.includes('git-dev') || hostname.includes('git-dev')) {
-      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-    }
-  }
-
-  // Production fallback (main branch and aces.fun)
-  return 'https://acesbackend-production.up.railway.app';
-};
+/**
+ * Resolve base URL for /api/listings/symbol so RWA page always hits this app's API.
+ * - Client: relative '' so fetch('/api/...') goes to same origin.
+ * - Server (SSR): absolute origin so fetch hits this Next.js app, not a separate backend.
+ */
+function resolveApiBaseUrl(): string {
+  if (typeof window !== 'undefined') return '';
+  return (
+    process.env.NEXT_PUBLIC_APP_ORIGIN?.replace(/\/$/, '') ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+    'http://localhost:3000'
+  );
+}
 
 const API_BASE_URL = resolveApiBaseUrl();
 
-export function useListingBySymbol(symbol: string) {
+/** Cache key for listing + health so modal prefetch matches RWA page request. */
+function cacheKey(symbol: string, includeHealth: boolean): string {
+  return `${symbol.trim().toLowerCase()}:${includeHealth}`;
+}
+
+const LISTING_CACHE_TTL_MS = 60 * 1000; // 1 minute
+
+interface CachedListing {
+  listing: DatabaseListing;
+  health: TokenHealthData | null;
+  timestamp: number;
+}
+
+const listingCache = new Map<string, CachedListing>();
+const pendingFetches = new Map<string, Promise<{ listing: DatabaseListing; health: TokenHealthData | null } | null>>();
+
+async function fetchListingBySymbolInternal(
+  symbol: string,
+  includeHealth: boolean,
+): Promise<{ listing: DatabaseListing; health: TokenHealthData | null } | null> {
+  const url = `${API_BASE_URL}/api/listings/symbol/${encodeURIComponent(symbol)}${includeHealth ? '?includeHealth=1' : ''}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch listing: ${response.status} ${response.statusText}`);
+  }
+  const result = await response.json();
+  if (!result.success || !result.data) return null;
+  let newListing = result.data as DatabaseListing;
+  if (newListing.token?.contractAddress) {
+    const validated = validateAndWarnAddress(newListing.token.contractAddress, 'listing-cache');
+    if (validated) {
+      newListing = { ...newListing, token: { ...newListing.token, contractAddress: validated } };
+    }
+  }
+  return { listing: newListing, health: result.health ?? null };
+}
+
+/**
+ * Shared fetch: uses cache (if fresh), dedupes in-flight requests.
+ * Used by prefetch (modal) and useListingBySymbol (RWA page) so the RWA page can show data immediately when prefetch completed.
+ */
+async function fetchListingBySymbol(
+  symbol: string,
+  includeHealth: boolean,
+): Promise<{ listing: DatabaseListing; health: TokenHealthData | null } | null> {
+  const key = cacheKey(symbol, includeHealth);
+  const cached = listingCache.get(key);
+  if (cached && Date.now() - cached.timestamp < LISTING_CACHE_TTL_MS) {
+    return { listing: cached.listing, health: cached.health };
+  }
+  let pending = pendingFetches.get(key);
+  if (!pending) {
+    pending = fetchListingBySymbolInternal(symbol, includeHealth).then((data) => {
+      pendingFetches.delete(key);
+      if (data) listingCache.set(key, { ...data, timestamp: Date.now() });
+      return data;
+    });
+    pendingFetches.set(key, pending);
+  }
+  return pending;
+}
+
+/**
+ * Prefetch listing (and health) for a symbol. Call this when the user is about to navigate to the RWA page (e.g. Trade/Auction in image-details-modal).
+ * The RWA page's useListingBySymbol will use the cached result if the prefetch completed, making the load feel instant.
+ */
+export function prefetchListingBySymbol(symbol: string, includeHealth = true): void {
+  const s = symbol?.trim();
+  if (!s) return;
+  fetchListingBySymbol(s, includeHealth).catch(() => {
+    // Prefetch is fire-and-forget; RWA page will refetch on mount if cache miss
+  });
+}
+
+export interface UseListingBySymbolOptions {
+  /** When true, request listing + token health in one round trip (faster DATA panel). Default false. */
+  includeHealth?: boolean;
+}
+
+export function useListingBySymbol(symbol: string, options: UseListingBySymbolOptions = {}) {
+  const { includeHealth = false } = options;
+
   const [listing, setListing] = useState<DatabaseListing | null>(null);
+  const [health, setHealth] = useState<TokenHealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,66 +114,29 @@ export function useListingBySymbol(symbol: string) {
     }
 
     let isCancelled = false;
-    let isInitialLoad = true;
+    const key = cacheKey(symbol, includeHealth);
+    const cached = listingCache.get(key);
 
-    async function fetchListingBySymbol() {
+    // Hydrate from cache immediately so RWA page can render without full-page loader when prefetch completed (e.g. from modal Trade/Auction).
+    if (cached && Date.now() - cached.timestamp < LISTING_CACHE_TTL_MS) {
+      setListing(cached.listing);
+      setHealth(cached.health);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    async function doFetch() {
       try {
-        // Only show loading state on initial load, not on polls
-        if (isInitialLoad) {
-          setLoading(true);
-        }
-        setError(null);
-
-        const response = await fetch(
-          `${API_BASE_URL}/api/v1/listings/symbol/${encodeURIComponent(symbol)}`,
-        );
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            if (!isCancelled) setListing(null);
-            return;
-          }
-          throw new Error(`Failed to fetch listings: ${response.status} ${response.statusText}`);
-        }
-
-        const result = await response.json();
-
-        if (result.success && result.data) {
-          const newListing = result.data as DatabaseListing;
-
-          // Validate and sanitize token address
-          if (newListing.token?.contractAddress) {
-            const validatedAddress = validateAndWarnAddress(
-              newListing.token.contractAddress,
-              'useListingBySymbol',
-            );
-
-            // Update the listing with validated address (keep original if validation fails)
-            if (validatedAddress) {
-              newListing.token = {
-                ...newListing.token,
-                contractAddress: validatedAddress,
-              };
-            }
-          }
-
-          if (!isCancelled) {
-            // Check if DEX status changed (token graduated)
-            const oldDexStatus = listing?.dex?.isDexLive;
-            const newDexStatus = newListing.dex?.isDexLive;
-
-            if (oldDexStatus === false && newDexStatus === true) {
-              console.log('🎓 [useListingBySymbol] Token graduated to DEX!', {
-                symbol: newListing.symbol,
-                poolAddress: newListing.dex?.poolAddress,
-                dexLiveAt: newListing.dex?.dexLiveAt,
-              });
-            }
-
-            setListing(newListing);
-          }
+        const data = await fetchListingBySymbol(symbol, includeHealth);
+        if (isCancelled) return;
+        if (data) {
+          setListing(data.listing);
+          setHealth(data.health);
         } else {
-          if (!isCancelled) setListing(null);
+          setListing(null);
+          setHealth(null);
         }
       } catch (err) {
         if (!isCancelled) {
@@ -110,72 +144,30 @@ export function useListingBySymbol(symbol: string) {
           setError(err instanceof Error ? err.message : 'Failed to fetch listing');
         }
       } finally {
-        if (!isCancelled && isInitialLoad) {
-          setLoading(false);
-          isInitialLoad = false;
-        }
+        if (!isCancelled) setLoading(false);
       }
     }
 
-    // Initial fetch
-    fetchListingBySymbol();
-
-    // Poll every 10 seconds to detect DEX graduation and other updates
-    const pollInterval = setInterval(() => {
-      if (!isCancelled) {
-        fetchListingBySymbol();
-      }
-    }, 10000); // 10 second polling interval
-
+    doFetch();
+    const pollInterval = setInterval(doFetch, 10000);
     return () => {
       isCancelled = true;
       clearInterval(pollInterval);
     };
-  }, [symbol]);
+  }, [symbol, includeHealth]);
 
   const refetch = async () => {
     if (!symbol) return;
-
     try {
       setLoading(true);
       setError(null);
-
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/listings/symbol/${encodeURIComponent(symbol)}`,
-      );
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          setListing(null);
-          return;
-        }
-        throw new Error(`Failed to fetch listings: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        const listing = result.data as DatabaseListing;
-
-        // Validate and sanitize token address
-        if (listing.token?.contractAddress) {
-          const validatedAddress = validateAndWarnAddress(
-            listing.token.contractAddress,
-            'useListingBySymbol.refetch',
-          );
-
-          // Update the listing with validated address (keep original if validation fails)
-          if (validatedAddress) {
-            listing.token = {
-              ...listing.token,
-              contractAddress: validatedAddress,
-            };
-          }
-        }
-
-        setListing(listing);
+      const data = await fetchListingBySymbol(symbol, includeHealth);
+      if (data) {
+        setListing(data.listing);
+        setHealth(data.health);
       } else {
         setListing(null);
+        setHealth(null);
       }
     } catch (err) {
       console.error('Error refetching listing:', err);
@@ -187,23 +179,20 @@ export function useListingBySymbol(symbol: string) {
 
   return {
     listing,
+    health,
     loading,
     error,
     refetch,
-    // Convenience properties
     isLive: listing?.isLive ?? false,
     isPreLaunch: listing ? !listing.isLive : false,
     isDexLive: listing?.dex?.isDexLive ?? listing?.token?.phase === 'DEX_TRADING',
     dex: listing?.dex ?? null,
-    // Launch date information
     launchDate: listing?.launchDate,
     isLaunched: listing?.launchDate ? new Date(listing.launchDate) <= new Date() : true,
-    // Owner information
     owner: listing?.owner,
   };
 }
 
-// Helper hook to check if current user is the owner
 export function useIsOwner(listing: DatabaseListing | null, currentUserAddress?: string) {
   if (!listing || !currentUserAddress) return false;
   return listing.owner?.walletAddress?.toLowerCase() === currentUserAddress.toLowerCase();

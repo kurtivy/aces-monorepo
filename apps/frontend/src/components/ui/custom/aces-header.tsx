@@ -1,7 +1,9 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import ConnectWalletNav from './connect-wallet-nav';
 
 interface AcesHeaderProps {
@@ -13,9 +15,10 @@ interface AcesHeaderProps {
 export default function AcesHeader({ className = '', title, onProfileClick }: AcesHeaderProps) {
   const router = useRouter();
 
-  const handleLogoClick = () => {
-    router.push('/');
-  };
+  // Prefetch home page when header mounts so logo click feels instant
+  useEffect(() => {
+    router.prefetch('/');
+  }, [router]);
 
   return (
     <header data-aces-header className={`w-full relative ${className}`}>
@@ -25,9 +28,9 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
         >
           {/* Left side - ACES.FUN Logo and Text */}
           <div className="flex items-center gap-2 sm:gap-4 min-w-0 sm:min-w-[250px]">
-            {/* Clickable Logo Only */}
-            <button
-              onClick={handleLogoClick}
+            {/* Clickable Logo - Link enables prefetch for instant navigation */}
+            <Link
+              href="/"
               className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0 cursor-pointer"
               aria-label="Navigate to home page"
             >
@@ -38,7 +41,7 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
                 height={56}
                 className="w-6 h-6 sm:w-12 sm:h-12 object-contain"
               />
-            </button>
+            </Link>
             {/* Non-clickable Text - Hidden on mobile, visible on desktop */}
             <div className="hidden sm:flex items-center min-w-0">
               <span className="text-lg sm:text-2xl font-bold text-white mr-0.5 sm:mr-1 font-braah-one">

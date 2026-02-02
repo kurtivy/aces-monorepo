@@ -61,6 +61,7 @@ import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
 import { isSymbolTradingLive, normalizeSymbol } from '@/constants/live-trading';
 
 interface UseCanvasRendererProps {
+  /** Pre-loaded images from useImageLoader (GCS URLs are loaded via /api/image-proxy there; renderer only draws .element). */
   images: ImageInfo[];
   viewState: ViewState;
   imagesLoaded: boolean;
@@ -87,6 +88,8 @@ interface UseCanvasRendererProps {
     isRepeated?: boolean;
     tileId?: string;
   } | null>;
+  // Called once when entrance animation completes (for loading state sync)
+  onEntranceComplete?: () => void;
 }
 
 // Removed global browserPerf - now using capability-based system per hook instance
@@ -216,6 +219,7 @@ export const useCanvasRenderer = ({
   onFeaturedImageClick,
   // HOVER ENHANCEMENT: Add hover ref
   hoveredProductImageRef,
+  onEntranceComplete,
 }: UseCanvasRendererProps) => {
   const canvasRefInternal = useRef<HTMLCanvasElement>(null);
 
@@ -227,16 +231,19 @@ export const useCanvasRenderer = ({
 
   useCoordinatedResize({ canvasRef: activeCanvasRef });
 
-  // FEATURED SECTION: Find featured image by ID
-  // Only lookup after images are loaded to avoid empty array issues
+  // FEATURED SECTION: Find featured image by isFeatured (Convex) or fallback to featuredImageId / first live / first
   const featuredImage = useMemo(() => {
-    // Don't lookup if images array is empty (not loaded yet)
-    if (!imagesLoaded || images.length === 0) {
-      return null;
+    if (!imagesLoaded || images.length === 0) return null;
+    const byFeatured = images.find((img) => img.metadata.isFeatured === true);
+    if (byFeatured) return byFeatured;
+    if (featuredImageId) {
+      const byId = images.find((img) => img.metadata.id === featuredImageId) || null;
+      if (byId) return byId;
     }
-
-    const found = images.find((img) => img.metadata.id === featuredImageId) || null;
-    return found;
+    // Fallback when no Convex isFeatured: use first live item so featured section is clickable and navigates to RWA
+    const byLive = images.find((img) => img.metadata.isLive === true);
+    if (byLive) return byLive;
+    return images[0] ?? null;
   }, [images, featuredImageId, imagesLoaded]);
 
   // Production Integration: Enhanced capability-based performance system
@@ -571,6 +578,7 @@ export const useCanvasRenderer = ({
   });
 
   const entranceAnimationStatusRef = useRef({ isAnimationActive: false, animationProgress: 0 });
+  const entranceCompleteFiredRef = useRef(false);
 
   const originalGridBounds = useRef<{
     startX: number;
@@ -1464,6 +1472,17 @@ export const useCanvasRenderer = ({
         animationProgress: entranceAnimation.animationProgress,
       };
 
+      // Fire onEntranceComplete once when animation finishes (for loading state sync)
+      if (
+        onEntranceComplete &&
+        !entranceCompleteFiredRef.current &&
+        !entranceAnimation.isAnimationActive &&
+        entranceAnimation.animationProgress >= 1
+      ) {
+        entranceCompleteFiredRef.current = true;
+        onEntranceComplete();
+      }
+
       // Add UI opacity calculation for fade-in effect
       const uiOpacity = entranceAnimation.isAnimationActive
         ? entranceAnimation.animationProgress
@@ -1673,7 +1692,12 @@ export const useCanvasRenderer = ({
         }
 
         const metadataSymbol = getSymbolFromMetadata(element.original.image.metadata);
-        const showLiveBadge = metadataSymbol ? isSymbolTradingLive(metadataSymbol) : false;
+        const showLiveBadge =
+          element.original.image.metadata.isLive !== undefined
+            ? element.original.image.metadata.isLive
+            : metadataSymbol
+              ? isSymbolTradingLive(metadataSymbol)
+              : false;
 
         return {
           opacity: element.opacity,
@@ -1758,7 +1782,12 @@ export const useCanvasRenderer = ({
           }
 
           const metadataSymbol = getSymbolFromMetadata(element.original.image.metadata);
-          const showLiveBadge = metadataSymbol ? isSymbolTradingLive(metadataSymbol) : false;
+          const showLiveBadge =
+            element.original.image.metadata.isLive !== undefined
+              ? element.original.image.metadata.isLive
+              : metadataSymbol
+                ? isSymbolTradingLive(metadataSymbol)
+                : false;
 
           return {
             opacity: 1, // Always fully visible

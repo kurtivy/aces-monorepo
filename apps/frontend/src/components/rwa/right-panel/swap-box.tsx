@@ -79,7 +79,7 @@ export default function TokenSwapInterface({
   showProgression = true,
   imageGallery,
   primaryImage,
-  chainId = 84532,
+  chainId = 8453,
   dexMeta = null,
   tokenDecimals = 18,
   transactionStatus: externalTransactionStatus,
@@ -100,7 +100,7 @@ export default function TokenSwapInterface({
 
   // Get contract addresses
   const contractAddresses = useMemo(
-    () => getContractAddresses(currentChainId || 84532),
+    () => getContractAddresses(currentChainId || 8453),
     [currentChainId],
   );
 
@@ -222,7 +222,7 @@ export default function TokenSwapInterface({
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [paymentAsset, setPaymentAsset] = useState<PaymentAsset>('ACES');
   const [amount, setAmount] = useState('');
-  const debouncedAmount = useDebouncedValue(amount, 200); // Reduced from 300ms for faster quote updates
+  const debouncedAmount = useDebouncedValue(amount, 150); // 150ms for quicker quote reaction to input
   const [loading, setLoading] = useState<string>('');
   const [localTransactionStatus, setLocalTransactionStatus] = useState<{
     type: 'success' | 'error';
@@ -689,12 +689,12 @@ export default function TokenSwapInterface({
   // ========================================
   // VALIDATION
   // ========================================
-  // Check if swap is supported
+  // Check if swap is supported (bonding curve removed - only DEX)
   const isSwapSupported = useMemo(() => {
     if (quote.strategy === 'none') return false;
-    if (quote.strategy === 'bonding-multihop' && !swap.acesSwapDeployed) return false;
-    return true;
-  }, [quote.strategy, swap.acesSwapDeployed]);
+    // Only DEX swaps are supported now
+    return quote.strategy === 'dex';
+  }, [quote.strategy]);
 
   // Check if output amount meets minimum requirement (1 token for multi-hop RWA buys)
   const minimumAmountWarning = useMemo(() => {
@@ -1629,6 +1629,28 @@ export default function TokenSwapInterface({
                 <span className="text-xs font-mono text-[#D0B284]/60 uppercase">
                   POWERED BY AERODROME
                 </span>
+              </div>
+            )}
+
+            {ENABLE_SWAP_DEBUG_LOGS && hasValidAmount && quote.outputAmount && (
+              <div className="mt-3 rounded-lg border border-[#D0B284]/30 bg-black/30 p-3 text-left">
+                <div className="text-xs font-mono text-[#D0B284]/80 uppercase mb-1.5">
+                  Quote debug
+                </div>
+                <div className="text-xs text-white/70 space-y-0.5 font-mono">
+                  <div>strategy: {quote.strategy}</div>
+                  <div>outputAmount: {quote.outputAmount}</div>
+                  {quote.path?.length ? <div>path: {quote.path.join(' → ')}</div> : null}
+                  {activeTab === 'buy' &&
+                    selectedSellAsset === 'ACES' &&
+                    Number.parseFloat(quote.outputAmount) > 0 && (
+                      <div>
+                        implied:{' '}
+                        {((Number(amount) || 0) / Number.parseFloat(quote.outputAmount)).toFixed(2)}{' '}
+                        ACES per 1 {tokenSymbol}
+                      </div>
+                    )}
+                </div>
               </div>
             )}
           </div>

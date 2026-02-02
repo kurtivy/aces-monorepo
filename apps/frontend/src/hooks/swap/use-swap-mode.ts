@@ -20,7 +20,7 @@ interface UseSwapModeProps {
  */
 export function useSwapMode({
   tokenAddress,
-  chainId = 84532,
+  chainId = 8453,
   dexMeta = null,
   routerAddress,
 }: UseSwapModeProps) {
@@ -82,8 +82,10 @@ export function useSwapMode({
       }
 
       // Step 1: Check for direct pool
-      // Note: 404 errors are expected for tokens without pools yet - handled silently
-      const poolRes = await DexApi.getPool(tokenAddress);
+      // Use poolAddress when available - token address alone 404s for Slipstream/V3 pools
+      const poolRes = await DexApi.getPool(tokenAddress, {
+        poolAddress: dexMeta?.poolAddress ?? undefined,
+      });
       if (!cancelled && poolRes.success) {
         setDexReady(true);
         return;

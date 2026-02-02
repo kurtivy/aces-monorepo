@@ -62,7 +62,7 @@ export const marketCapRoutes = async (fastify: FastifyInstance) => {
 
         const marketCapData = await fastify.marketCapService.getMarketCap(
           tokenAddress,
-          8453, // Base network chain ID
+          8453, // Base Mainnet
         );
 
         const response: MarketCapResponse = {

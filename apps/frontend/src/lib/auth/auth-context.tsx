@@ -11,11 +11,7 @@ import React, {
   useRef,
 } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import {
-  ProfileApi,
-  UserProfile,
-  ProfileUpdateRequest,
-} from '@/lib/api/profile';
+import { ProfileApi, UserProfile, ProfileUpdateRequest } from '@/lib/api/profile';
 
 export type { UserProfile, ProfileUpdateRequest };
 
@@ -42,33 +38,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function getAuthApiBaseUrl(): string {
-  // Use environment variable if available
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // For localhost development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:3002';
-  }
-
-  // Dynamic URL based on current deployment
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const href = window.location.href;
-
-    // Check for dev/git-dev branch
-    if (href.includes('git-dev') || hostname.includes('git-dev')) {
-      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-    }
-  }
-
-  // Production fallback (main branch and aces.fun)
-  return 'https://acesbackend-production.up.railway.app';
-}
-
-const API_BASE_URL = getAuthApiBaseUrl();
+// Auth uses ProfileApi which handles base URL - no separate API_BASE_URL needed
 
 interface AuthState {
   user: UserProfile | null;
@@ -133,8 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = state.user?.role === 'ADMIN';
 
   const initializeAuth = useCallback(async () => {
+    let timeoutId: number | undefined;
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+      // Safety: stop loading after 15s if profile API never resolves (avoids stuck UI)
+      timeoutId = window.setTimeout(() => {
+        setState((prev) => (prev.isLoading ? { ...prev, isLoading: false } : prev));
+      }, 15000);
 
       const token = await privyGetAccessToken();
       if (!token) {
@@ -201,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : 'Authentication failed',
       }));
     } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
       setState((prev) => ({ ...prev, isLoading: false }));
     }
   }, [privyUser, privyGetAccessToken, primaryWalletAddress]);
@@ -361,7 +338,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({ ...prev, isLoading: false }));
     }
   };
-
 
   const getAccessToken = async (): Promise<string | null> => {
     if (!privyAuthenticated || !privyUser) {

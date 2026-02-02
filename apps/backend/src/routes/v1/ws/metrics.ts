@@ -679,7 +679,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               async (poolState: PoolStateEvent) => {
                 // 🔥 NEW: Real-time DEX liquidity calculation
                 try {
-                  const networkConfig = getNetworkConfig(8453); // Base chain
+                  const networkConfig = getNetworkConfig(8453); // Base Mainnet
                   if (!networkConfig.rpcUrl) {
                     throw new Error('No RPC URL configured for Base chain');
                   }

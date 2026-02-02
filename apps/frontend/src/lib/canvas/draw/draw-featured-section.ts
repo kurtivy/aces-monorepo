@@ -184,6 +184,15 @@ const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
   return { days, isExpired: false };
 };
 
+/** Optional featured item metadata from Convex (isLive drives upcoming vs live state). */
+export type FeaturedMetadata = {
+  title?: string;
+  symbol?: string;
+  ticker?: string;
+  isLive?: boolean;
+  countdownDate?: string;
+};
+
 const drawDaysLeft = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -192,12 +201,29 @@ const drawDaysLeft = (
   height: number,
   opacity: number,
   responsiveMetrics: ResponsiveMetrics,
+  /** When true (from Convex), show "LIVE" instead of countdown. */
+  isLiveFromConvex?: boolean,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  const { days, isExpired } = calculateDaysLeft();
   const isMobile = responsiveMetrics.isMobile;
+
+  // If Convex says this token is live, show "LIVE" and skip countdown
+  if (isLiveFromConvex === true) {
+    ctx.fillStyle = '#D0B284';
+    const fontSize = (isMobile ? 24 : 32) * responsiveMetrics.fontScale;
+    ctx.font = `bold ${fontSize}px ${getCanvasFontStack('NeueWorld')}`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
+    const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
+    ctx.fillText('LIVE', textX, textY);
+    ctx.restore();
+    return;
+  }
+
+  const { days, isExpired } = calculateDaysLeft();
 
   // No card background - just text floating on the image
 
@@ -304,6 +330,8 @@ export const drawArtGalleryCard = (
   height: number,
   opacity: number,
   responsiveMetrics: ResponsiveMetrics,
+  /** When provided (from Convex featured item), card text reflects live vs upcoming. */
+  featuredMetadata?: FeaturedMetadata,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
@@ -348,21 +376,29 @@ export const drawArtGalleryCard = (
   drawPin(ctx, cardX + inset, cardY + cardHeight - inset, r, pinConfig); // BL
   drawPin(ctx, cardX + cardWidth - inset, cardY + cardHeight - inset, r, pinConfig); // BR
 
-  // --- Text (left-aligned + spacing) ---
+  // --- Text: use Convex featured metadata when available (live vs upcoming) ---
+  const symbol = featuredMetadata?.symbol ?? featuredMetadata?.ticker ?? 'ILLICIT';
+  const displaySymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
+  const isLive = featuredMetadata?.isLive === true;
+
+  const line1Text = featuredMetadata?.title ?? 'Banksy – The Illicit Collaboration';
+  const shortTitle =
+    featuredMetadata?.title && featuredMetadata.title.length > 24
+      ? featuredMetadata.title.slice(0, 22) + '…'
+      : (featuredMetadata?.title ?? 'Illicit Collaboration');
+  const line2Text = `"${shortTitle}"`;
+  const line3Text = isMobile ? 'v. Banksy x Chimp drop.' : 'v. Banksy x Chimp drop.';
+  const line4Text = isLive ? `${displaySymbol} TOKEN LIVE` : 'UPCOMING';
+
+  // --- Fonts (left-aligned + spacing) ---
   const baseFontSize = responsiveMetrics.isMobile
     ? Math.max(10, cardWidth * 0.15 * responsiveMetrics.fontScale) // Larger font for bigger mobile card
     : Math.max(8, cardWidth * 0.052);
 
-  // Apply responsive scaling to all font calculations
   const line1Font = `${(baseFontSize / 0.85) * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
   const line2Font = `bold ${baseFontSize * 1.1 * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
   const line3Font = `italic ${baseFontSize * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
   const line4Font = `${baseFontSize * 1.05 * responsiveMetrics.fontScale}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
-
-  const line1Text = 'Banksy – The Illicit Collaboration';
-  const line2Text = '"Illicit Collaboration"';
-  const line3Text = isMobile ? 'v. Banksy x Chimp drop.' : 'v. Banksy x Chimp drop.';
-  const line4Text = '$ILLICIT TOKEN LIVE';
 
   // metrics
   const m1 = getTextMetrics(ctx, line1Text, line1Font);
@@ -473,16 +509,18 @@ export const drawFeaturedSection = (
   ctx.roundRect(x, y, width, height, radius);
   ctx.fill();
 
-  // Draw featured image/video if available
-  // Enhanced check: image is ready if it has loaded dimensions OR is marked complete
+  // Draw featured image/video/canvas if available
+  // Ready if: Video, or Image (complete or has dimensions), or Canvas (has dimensions), or Image with data URL (placeholder)
+  const el = featuredImage?.element;
   const isElementReady =
     featuredImage &&
-    featuredImage.element &&
-    (featuredImage.element instanceof HTMLVideoElement ||
-      (featuredImage.element instanceof HTMLImageElement &&
-        // Image is ready if: complete flag is true OR has valid dimensions
-        (featuredImage.element.complete ||
-          (featuredImage.element.naturalWidth > 0 && featuredImage.element.naturalHeight > 0))));
+    el &&
+    (el instanceof HTMLVideoElement ||
+      (el instanceof HTMLCanvasElement && el.width > 0 && el.height > 0) ||
+      (el instanceof HTMLImageElement &&
+        (el.complete ||
+          (el.naturalWidth > 0 && el.naturalHeight > 0) ||
+          (el.src?.startsWith('data:') && el.width > 0 && el.height > 0))));
 
   // If image exists but isn't ready yet, ensure it's loading
   if (
@@ -535,7 +573,7 @@ export const drawFeaturedSection = (
     ctx.roundRect(imageX, imageY, imageWidth, imageHeight, radius - 4);
     ctx.clip();
 
-    // Get natural dimensions based on element type
+    // Get dimensions based on element type (Image, Video, or Canvas)
     const element = featuredImage.element;
     let naturalWidth: number;
     let naturalHeight: number;
@@ -543,9 +581,12 @@ export const drawFeaturedSection = (
     if (element instanceof HTMLVideoElement) {
       naturalWidth = element.videoWidth;
       naturalHeight = element.videoHeight;
+    } else if (element instanceof HTMLCanvasElement) {
+      naturalWidth = element.width;
+      naturalHeight = element.height;
     } else {
-      naturalWidth = element.naturalWidth;
-      naturalHeight = element.naturalHeight;
+      naturalWidth = element.naturalWidth || element.width || 1;
+      naturalHeight = element.naturalHeight || element.height || 1;
     }
 
     // Calculate scale to cover the entire area while maintaining aspect ratio
@@ -574,7 +615,7 @@ export const drawFeaturedSection = (
 
     ctx.restore();
   } else {
-    // Fallback: Draw placeholder content when no image is available
+    // Fallback: Loading placeholder – scoped to featured section only (no full-page loader needed)
     ctx.save();
     const imagePadding = 12;
     const imageX = x + imagePadding;
@@ -582,25 +623,81 @@ export const drawFeaturedSection = (
     const imageWidth = width - imagePadding * 2;
     const imageHeight = height - imagePadding * 2;
 
-    // Draw a placeholder pattern
+    // Placeholder background
     ctx.fillStyle = '#2A2A2A';
     ctx.beginPath();
     ctx.roundRect(imageX, imageY, imageWidth, imageHeight, radius - 4);
     ctx.fill();
 
-    // Add some visual content
-    ctx.fillStyle = '#666666';
-    ctx.font = `${Math.min(imageWidth, imageHeight) * 0.1}px ${getCanvasFontStack('NeueWorld')}`;
+    // Loading spinner (contained to featured section)
+    const now =
+      typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const spinnerRadius = Math.min(imageWidth, imageHeight) * 0.08;
+    const spinnerCx = imageX + imageWidth / 2;
+    const spinnerCy = imageY + imageHeight / 2 - 12;
+    const startAngle = (now / 800) % (Math.PI * 2);
+    ctx.strokeStyle = 'rgba(215, 191, 117, 0.6)';
+    ctx.lineWidth = Math.max(2, spinnerRadius * 0.15);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(spinnerCx, spinnerCy, spinnerRadius, startAngle, startAngle + Math.PI * 1.5);
+    ctx.stroke();
+
+    const label = featuredImage?.metadata?.title ?? 'Loading…';
+    const fontSize = Math.min(imageWidth, imageHeight) * 0.07;
+    ctx.fillStyle = '#888888';
+    ctx.font = `${fontSize}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('FEATURED ITEM', imageX + imageWidth / 2, imageY + imageHeight / 2);
+    const maxChars = Math.floor(imageWidth / (fontSize * 0.6));
+    const displayLabel = label.length > maxChars ? label.slice(0, maxChars - 1) + '…' : label;
+    ctx.fillText(displayLabel, imageX + imageWidth / 2, imageY + imageHeight / 2 + 18);
 
     ctx.restore();
   }
 
-  // Draw new overlay elements with responsive scaling
-  drawArtGalleryCard(ctx, x, y, width, height, opacity, responsiveMetrics);
-  drawDaysLeft(ctx, x, y, width, height, opacity, responsiveMetrics);
+  // Draw new overlay elements with responsive scaling (use Convex metadata for live vs upcoming)
+  const featuredMetadata = featuredImage?.metadata
+    ? {
+        title: featuredImage.metadata.title,
+        symbol: featuredImage.metadata.symbol,
+        ticker: featuredImage.metadata.ticker,
+        isLive: featuredImage.metadata.isLive,
+        countdownDate: featuredImage.metadata.countdownDate,
+      }
+    : undefined;
+  drawArtGalleryCard(ctx, x, y, width, height, opacity, responsiveMetrics, featuredMetadata);
+  drawDaysLeft(
+    ctx,
+    x,
+    y,
+    width,
+    height,
+    opacity,
+    responsiveMetrics,
+    featuredImage?.metadata?.isLive,
+  );
+
+  // Status badge: "Upcoming" or "Trade now" from Convex isLive
+  const statusBadgeText = featuredImage?.metadata?.isLive === true ? 'Trade now' : 'Upcoming';
+  const badgePad = 10 * responsiveMetrics.paddingScale;
+  const badgeX = x + badgePad;
+  const badgeY = y + badgePad;
+  const badgeFontSize = Math.max(10, 12 * responsiveMetrics.fontScale);
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.font = `600 ${badgeFontSize}px ${getCanvasFontStack('NeueWorld')}`;
+  const badgeW = ctx.measureText(statusBadgeText).width + 14;
+  const badgeH = badgeFontSize + 8;
+  ctx.fillStyle = 'rgba(24, 77, 55, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+  ctx.fill();
+  ctx.fillStyle = '#E6E3D3';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(statusBadgeText, badgeX + 7, badgeY + badgeH / 2);
+  ctx.restore();
 
   // Draw auction icon in top-right corner (using Auction Notification)
   const iconBounds = getAuctionIconBounds(x, y, width, height, responsiveMetrics);
@@ -808,6 +905,16 @@ export const drawAnimatedFeaturedSection = (
   // Restore context to remove scale transformation for borders and labels
   ctx.restore();
 
+  // Draw overlay elements with fade-in (use Convex metadata for live vs upcoming)
+  const overlayMetadata = featuredImage?.metadata
+    ? {
+        title: featuredImage.metadata.title,
+        symbol: featuredImage.metadata.symbol,
+        ticker: featuredImage.metadata.ticker,
+        isLive: featuredImage.metadata.isLive,
+        countdownDate: featuredImage.metadata.countdownDate,
+      }
+    : undefined;
   // Draw new overlay elements with fade-in
   const overlayOpacity = opacity * borderAnimationProgress;
 
@@ -965,8 +1072,47 @@ export const drawAnimatedFeaturedSection = (
   }
 
   // Draw the new overlay elements last to ensure they appear on top
-  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, responsiveMetrics);
-  drawDaysLeft(ctx, drawX, drawY, width, height, overlayOpacity, responsiveMetrics);
+  drawArtGalleryCard(
+    ctx,
+    drawX,
+    drawY,
+    width,
+    height,
+    overlayOpacity,
+    responsiveMetrics,
+    overlayMetadata,
+  );
+  drawDaysLeft(
+    ctx,
+    drawX,
+    drawY,
+    width,
+    height,
+    overlayOpacity,
+    responsiveMetrics,
+    featuredImage?.metadata?.isLive,
+  );
+
+  // Status badge: "Upcoming" or "Trade now" from Convex isLive
+  const statusBadgeText = featuredImage?.metadata?.isLive === true ? 'Trade now' : 'Upcoming';
+  const badgePad = 10 * responsiveMetrics.paddingScale;
+  const badgeX = drawX + badgePad;
+  const badgeY = drawY + badgePad;
+  const badgeFontSize = Math.max(10, 12 * responsiveMetrics.fontScale);
+  ctx.save();
+  ctx.globalAlpha = overlayOpacity;
+  ctx.font = `600 ${badgeFontSize}px ${getCanvasFontStack('NeueWorld')}`;
+  const badgeW = ctx.measureText(statusBadgeText).width + 14;
+  const badgeH = badgeFontSize + 8;
+  ctx.fillStyle = 'rgba(24, 77, 55, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+  ctx.fill();
+  ctx.fillStyle = '#E6E3D3';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(statusBadgeText, badgeX + 7, badgeY + badgeH / 2);
+  ctx.restore();
 
   // Draw auction icon with animation opacity (using Auction Notification)
   const iconBounds = getAuctionIconBounds(drawX, drawY, width, height, responsiveMetrics);

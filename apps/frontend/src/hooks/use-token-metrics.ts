@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { TokenMetrics } from '@/lib/api/tokens';
+import type { TokenHealthData } from '@/lib/api/token-health';
 import { fetchTokenHealth } from '@/lib/api/token-health';
 import { useRealtimeMetrics } from '@/hooks/websocket/use-realtime-metrics';
 
@@ -16,24 +17,29 @@ interface UseTokenMetricsResult {
   error: string | null;
   refetch: () => void;
   circulatingSupply: number | null;
-  rewardSupply: number | null; // Actual circulating for reward calculations (excludes LP tokens)
+  rewardSupply: number | null;
   currentPriceUsd: number;
   bondingData: BondingDataSubset | null;
   marketCapUsd: number;
 }
 
+export interface UseTokenMetricsOptions {
+  refreshIntervalMs?: number;
+  /** Pre-fetched health (e.g. from listing?includeHealth=1). When set, skips initial REST fetch and shows data immediately. */
+  initialHealth?: TokenHealthData | null;
+}
+
 /**
- * Hook to fetch and track token metrics with real-time WebSocket updates
- * Uses WebSocket for instant updates, falls back to REST API polling if WebSocket unavailable
- *
- * @param tokenAddress - The contract address of the token
- * @param refreshIntervalMs - Polling interval in milliseconds for REST fallback (default: 30000 = 30s)
- * @returns Token metrics data, loading state, and error state
+ * Fetches and tracks token metrics. When initialHealth is provided (e.g. from listing+health in one request),
+ * state is seeded immediately and no duplicate health fetch is made; polling/WS still run for updates.
  */
 export function useTokenMetrics(
   tokenAddress: string | undefined,
-  refreshIntervalMs: number = 30000, // 🔥 UPDATED: 30s polling for REST fallback only (WebSocket is primary)
+  options: UseTokenMetricsOptions | number = {},
 ): UseTokenMetricsResult {
+  const opts = typeof options === 'number' ? { refreshIntervalMs: options } : options;
+  const refreshIntervalMs = opts.refreshIntervalMs ?? 30000;
+  const initialHealth = opts.initialHealth;
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);
   const restFetchedRef = useRef<boolean>(false); // ensure one REST fetch per token to seed fee fields
@@ -193,15 +199,13 @@ export function useTokenMetrics(
         });
       }
 
-      // 🔥 NEW: Extract bonding data from WebSocket metrics
-      if (wsMetrics.bondingData) {
-        setBondingData({
-          bondingPercentage: wsMetrics.bondingData.bondingPercentage,
-          isBonded: wsMetrics.bondingData.isBonded,
-          currentSupply: wsMetrics.bondingData.currentSupply,
-          tokensBondedAt: wsMetrics.bondingData.tokensBondedAt,
-        });
-      }
+      // Bonding curve removed - always set to 100% bonded (DEX mode)
+      setBondingData({
+        bondingPercentage: 100,
+        isBonded: true,
+        currentSupply: '0',
+        tokensBondedAt: '0',
+      });
 
       setError(null);
       setLoading(false);
@@ -276,11 +280,13 @@ export function useTokenMetrics(
         metricsRef.current = updatedMetrics;
         restFetchedRef.current = true;
 
-        // Extract circulatingSupply from bondingData with safe parsing
+        // Bonding curve removed - circulatingSupply comes from marketCapData now
         // Sticky update: do not overwrite with null when missing/invalid
-        if (healthData.bondingData?.currentSupply) {
-          const parsed = parseFloat(healthData.bondingData.currentSupply);
-          setCirculatingSupply((prev) => (Number.isFinite(parsed) ? parsed : (prev ?? null)));
+        if (healthData.marketCapData?.circulatingSupply !== undefined) {
+          const supply = healthData.marketCapData.circulatingSupply;
+          setCirculatingSupply((prev) =>
+            Number.isFinite(supply) && supply > 0 ? supply : (prev ?? null),
+          );
         }
 
         // Extract currentPriceUsd from marketCapData
@@ -308,17 +314,14 @@ export function useTokenMetrics(
           );
         }
 
-        // Extract bonding data for progression components
-        if (healthData.bondingData) {
-          setBondingData({
-            bondingPercentage: healthData.bondingData.bondingPercentage || 0,
-            isBonded: healthData.bondingData.isBonded || false,
-            currentSupply: healthData.bondingData.currentSupply || '0',
-            tokensBondedAt: healthData.bondingData.tokensBondedAt || '700000000',
-          });
-        } else {
-          setBondingData(null);
-        }
+        // Bonding curve removed - always set bonding data to null
+        // All tokens are now in DEX mode (100% bonded)
+        setBondingData({
+          bondingPercentage: 100,
+          isBonded: true,
+          currentSupply: '0',
+          tokensBondedAt: '0',
+        });
 
         setError(null);
       } else {
@@ -336,8 +339,60 @@ export function useTokenMetrics(
     }
   }, [tokenAddress, wsConnected]);
 
+  // Seed state from pre-fetched health (e.g. listing+health in one request) to avoid duplicate fetch and show data immediately.
+  const applyHealthToState = useCallback((healthData: TokenHealthData) => {
+    if (healthData.metricsData) {
+      const m = healthData.metricsData;
+      const updatedMetrics: TokenMetrics = {
+        contractAddress: m.contractAddress,
+        volume24hUsd: m.volume24hUsd,
+        volume24hAces: m.volume24hAces,
+        marketCapUsd: m.marketCapUsd,
+        tokenPriceUsd: m.tokenPriceUsd,
+        holderCount: m.holderCount,
+        totalFeesUsd: m.totalFeesUsd,
+        totalFeesAces: m.totalFeesAces,
+        dexFeesUsd: m.dexFeesUsd ?? 0,
+        dexFeesAces: m.dexFeesAces ?? '0',
+        bondingFeesUsd: m.bondingFeesUsd ?? 0,
+        bondingFeesAces: m.bondingFeesAces ?? '0',
+        liquidityUsd: m.liquidityUsd,
+        liquiditySource: m.liquiditySource,
+      };
+      setMetrics(updatedMetrics);
+      metricsRef.current = updatedMetrics;
+    }
+    if (healthData.marketCapData) {
+      const mc = healthData.marketCapData;
+      if (Number.isFinite(mc.circulatingSupply) && mc.circulatingSupply > 0) {
+        setCirculatingSupply(mc.circulatingSupply);
+      }
+      if (Number.isFinite(mc.currentPriceUsd) && mc.currentPriceUsd > 0) {
+        setCurrentPriceUsd(mc.currentPriceUsd);
+      }
+      if (Number.isFinite(mc.marketCapUsd)) {
+        setMarketCapUsd(mc.marketCapUsd);
+      }
+      if (
+        mc.rewardSupply !== undefined &&
+        Number.isFinite(mc.rewardSupply) &&
+        mc.rewardSupply > 0
+      ) {
+        setRewardSupply(mc.rewardSupply);
+      }
+    }
+    setBondingData({
+      bondingPercentage: 100,
+      isBonded: true,
+      currentSupply: '0',
+      tokensBondedAt: '0',
+    });
+    setError(null);
+    setLoading(false);
+    restFetchedRef.current = true;
+  }, []);
+
   useEffect(() => {
-    // 🔥 CRITICAL FIX: Clear state immediately on token switch
     setMetrics(null);
     metricsRef.current = null;
     restFetchedRef.current = false;
@@ -346,10 +401,8 @@ export function useTokenMetrics(
     setCurrentPriceUsd(0);
     setBondingData(null);
     setMarketCapUsd(0);
-    setLoading(true); // Show loading during transition
+    setLoading(true);
     setError(null);
-
-    // 🔥 CRITICAL FIX: Reset timestamp ref so all updates are accepted
     lastUpdateTimestampRef.current = 0;
 
     if (!tokenAddress) {
@@ -357,10 +410,15 @@ export function useTokenMetrics(
       return;
     }
 
-    // 🔥 REMOVED: No more polling here
-    // useRealtimeMetrics hook handles all WebSocket + fallback polling exclusively
-    // Keeping fetchMetrics function available only for explicit manual refetch if needed
-  }, [tokenAddress, refreshIntervalMs, fetchMetrics, wsConnected]);
+    // When health was pre-fetched with listing, seed state immediately and skip REST fetch.
+    if (initialHealth) {
+      applyHealthToState(initialHealth);
+      return;
+    }
+
+    fetchMetrics();
+    // initialHealth intentionally omitted: used only for initial seed so we don't overwrite later WS/poll updates
+  }, [tokenAddress, refreshIntervalMs, fetchMetrics, wsConnected, applyHealthToState]);
 
   // 🔥 REMOVED: Chart event subscription
   // Previously subscribed to subscribeToMarketCapUpdates which caused fluctuation

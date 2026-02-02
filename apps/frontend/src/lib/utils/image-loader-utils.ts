@@ -29,6 +29,28 @@ interface ImageLoadResult {
   loadTime?: number;
 }
 
+/** Hosts that we proxy through /api/image-proxy to avoid CORS and expired signed URLs (e.g. GCS). */
+const PROXY_IMAGE_HOSTS = new Set([
+  'storage.googleapis.com',
+  'storage.cloud.google.com',
+  'aces-product-images.storage.googleapis.com',
+]);
+
+function shouldProxyImage(src: string): boolean {
+  try {
+    const url = new URL(src, 'https://example.com');
+    return PROXY_IMAGE_HOSTS.has(url.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** Returns same-origin proxy URL for the given image URL (avoids CORS / expired signed URLs). */
+function getProxyUrl(src: string): string {
+  if (typeof window === 'undefined') return src;
+  return `/api/image-proxy?url=${encodeURIComponent(src)}`;
+}
+
 /**
  * Determines if an image source requires CORS handling
  * Uses feature detection instead of user agent detection
@@ -129,44 +151,59 @@ function isCanvasTainted(canvas: HTMLCanvasElement): boolean {
 }
 
 /**
- * Loads an image with standardized CORS handling and fallback strategy
+ * Loads an image with standardized CORS handling and fallback strategy.
+ * For cross-origin URLs we try no-CORS first so images load for canvas display
+ * even when the server does not send CORS headers (we only draw, never read pixels).
  */
 export async function loadImageWithFallback(options: ImageLoadOptions): Promise<ImageLoadResult> {
   const { src, enableCORS = true, timeout = 15000, retryAttempts = 2 } = options;
   const startTime = performance.now();
+  // Use same-origin proxy for GCS (and other allowlisted hosts) to avoid CORS and expired signed URLs
+  const effectiveSrc = shouldProxyImage(src) ? getProxyUrl(src) : src;
+  const isCrossOrigin = requiresCORS(effectiveSrc);
 
-  // Step 1: Determine if CORS is needed
-  const needsCORS = enableCORS && requiresCORS(src);
+  // Step 1: For cross-origin, try without CORS first so the image loads for canvas draw
+  // (server does not need Access-Control-Allow-Origin; we only draw, never getImageData)
+  if (isCrossOrigin) {
+    for (let attempt = 0; attempt < retryAttempts; attempt++) {
+      const noCorsResult = await attemptImageLoad(effectiveSrc, false, timeout);
+      if (noCorsResult.success) {
+        return {
+          ...noCorsResult,
+          loadTime: performance.now() - startTime,
+        };
+      }
+      if (attempt < retryAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    LuxuryLogger.log(
+      `Cross-origin load without CORS failed for ${effectiveSrc}, trying with CORS`,
+      'warn',
+    );
+  }
 
-  // Step 2: Try loading with CORS if needed
-  if (needsCORS) {
-    const corsResult = await attemptImageLoad(src, true, timeout);
+  // Step 2: Try with CORS if enabled (needed for same-origin or when server sends CORS)
+  if (enableCORS && isCrossOrigin) {
+    const corsResult = await attemptImageLoad(effectiveSrc, true, timeout);
     if (corsResult.success) {
       return {
         ...corsResult,
         loadTime: performance.now() - startTime,
       };
     }
-
-    LuxuryLogger.log(
-      `CORS load failed for ${src}, attempting without CORS: ${corsResult.error}`,
-      'warn',
-    );
   }
 
-  // Step 3: Try loading without CORS (fallback)
+  // Step 3: Same-origin or final attempt: load without CORS
   for (let attempt = 0; attempt < retryAttempts; attempt++) {
-    const result = await attemptImageLoad(src, false, timeout);
+    const result = await attemptImageLoad(effectiveSrc, false, timeout);
     if (result.success) {
       return {
         ...result,
         loadTime: performance.now() - startTime,
       };
     }
-
     if (attempt < retryAttempts - 1) {
-      LuxuryLogger.log(`Load attempt ${attempt + 1} failed for ${src}, retrying...`, 'warn');
-      // Brief delay before retry
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }

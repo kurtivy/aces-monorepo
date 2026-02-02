@@ -17,8 +17,8 @@ export default function AdminHomePage() {
         return;
       }
 
-      // Admin authenticated - redirect to dashboard
-      router.push('/admin/dashboard');
+      // Admin authenticated - redirect to token launch page
+      router.push('/admin/token-launch');
     }
   }, [isAdminAuthenticated, isLoading, router]);
 

@@ -23,18 +23,12 @@ export default function AdminLoginPage() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check authentication status and redirect accordingly
+  // Redirect only when already authenticated (e.g. landed with session); avoid double-redirect after form submit
   useEffect(() => {
-    console.log('📋 Login page auth check:', {
-      isAdminLoading,
-      isAdminAuthenticated,
-    });
-
-    if (!isAdminLoading && isAdminAuthenticated) {
-      console.log('✅ Login: Admin auth complete, redirecting to dashboard');
-      router.push('/admin/dashboard');
+    if (!isAdminLoading && isAdminAuthenticated && !isSubmitting) {
+      router.replace('/admin/token-launch');
     }
-  }, [isAdminAuthenticated, isAdminLoading, router]);
+  }, [isAdminAuthenticated, isAdminLoading, isSubmitting, router]);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,14 +36,7 @@ export default function AdminLoginPage() {
     setError(null);
 
     try {
-      console.log('🔐 Starting admin login process...', {
-        email: adminCredentials.email,
-      });
-
-      // Authenticate with Supabase admin credentials
       const result = await adminLogin(adminCredentials.email, adminCredentials.password);
-
-      console.log('🔑 Admin auth result:', result);
 
       if (!result.success) {
         setError(result.error || 'Invalid admin credentials. Please try again.');
@@ -57,12 +44,9 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Redirect to dashboard
-      console.log('🎉 Admin auth successful, redirecting to dashboard...');
       setIsRedirecting(true);
-      router.push('/admin/dashboard');
+      router.replace('/admin/token-launch');
     } catch (err) {
-      console.error('❌ Login error:', err);
       setError('Login failed. Please try again.');
       setIsSubmitting(false);
     }
@@ -75,7 +59,7 @@ export default function AdminLoginPage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-black border border-purple-400/20 rounded-lg p-8 text-center">
             <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
-            <h3 className="text-white font-libre-caslon text-xl mb-2">Loading Dashboard</h3>
+            <h3 className="text-white font-libre-caslon text-xl mb-2">Loading Token Launch</h3>
             <p className="text-[#DCDDCC] font-jetbrains">Preparing your admin environment...</p>
           </div>
         </div>
@@ -144,7 +128,7 @@ export default function AdminLoginPage() {
                 {isRedirecting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Redirecting to Dashboard...
+                    Redirecting to Token Launch...
                   </>
                 ) : isSubmitting ? (
                   <>

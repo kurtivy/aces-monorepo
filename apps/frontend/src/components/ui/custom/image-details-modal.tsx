@@ -10,10 +10,20 @@ import type { ImageInfo } from '../../../types/canvas';
 import { getImageMetadata } from '../../../lib/utils/luxury-logger';
 import PurchaseInquiryModal from './purchase-inquiry-modal';
 import AuctionInterestModal from '@/components/ui/custom/auction-interest-modal';
-import { useListingBySymbol } from '../../../hooks/rwa/use-listing-by-symbol';
+import {
+  useListingBySymbol,
+  prefetchListingBySymbol,
+} from '../../../hooks/rwa/use-listing-by-symbol';
 import { useTokenMarketCap } from '../../../hooks/use-token-market-cap';
 import { TokensApi } from '@/lib/api/tokens';
 import { isSymbolTradingLive, normalizeSymbol } from '@/constants/live-trading';
+
+/** Legacy canvas item id -> symbol for Convex items that may not have symbol/ticker set (e.g. migrated SAMPLE_METADATA). */
+const LEGACY_CANVAS_SYMBOLS: Record<string, string> = {
+  '7': 'APKAWS',
+  '26': 'RMILLE',
+  '27': 'ILLICIT',
+};
 
 import {
   addWindowEventListenerSafe,
@@ -231,6 +241,8 @@ export default function ImageDetailsModal({
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   // State for auction interest modal (when listing is not live)
   const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
+  // Loading state when user clicks Trade or Auction – keep modal open with spinner until navigation
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const isDrvn = imageInfo?.metadata?.id === 'drvn';
   const metadataSymbol = imageInfo?.metadata?.symbol;
@@ -238,8 +250,11 @@ export default function ImageDetailsModal({
 
   const normalizedSymbol = useMemo(() => {
     if (isDrvn) return '';
-    return normalizeSymbol(metadataSymbol) ?? normalizeSymbol(metadataTicker) ?? '';
-  }, [isDrvn, metadataSymbol, metadataTicker]);
+    const fromMeta = normalizeSymbol(metadataSymbol) ?? normalizeSymbol(metadataTicker);
+    if (fromMeta) return fromMeta;
+    const legacyId = imageInfo?.metadata?.id;
+    return (legacyId && LEGACY_CANVAS_SYMBOLS[legacyId]) ?? '';
+  }, [isDrvn, metadataSymbol, metadataTicker, imageInfo?.metadata?.id]);
 
   const shouldExposeTokenStats = normalizedSymbol === 'APK';
 
@@ -398,19 +413,34 @@ export default function ImageDetailsModal({
   const handleTradeClick = useCallback(() => {
     if (isDrvn) return; // disabled
 
-    // Route based on the normalized symbol
+    setIsNavigating(true);
+    prefetchListingBySymbol(normalizedSymbol, true); // start loading RWA data now so page can show instantly
+    // Route based on the normalized symbol – modal stays open with spinner until page loads
     if (normalizedSymbol === 'APK') {
-      stableOnClose();
       router.push('/rwa/apk');
     } else if (normalizedSymbol === 'APKAWS') {
-      stableOnClose();
       router.push('/rwa/apkaws');
     } else if (normalizedSymbol) {
-      // Generic route for any other trading symbols
-      stableOnClose();
       router.push(`/rwa/${normalizedSymbol.toLowerCase()}`);
+    } else {
+      setIsNavigating(false);
     }
-  }, [router, normalizedSymbol, stableOnClose, isDrvn]);
+  }, [router, normalizedSymbol, isDrvn]);
+
+  const handleAuctionClick = useCallback(() => {
+    if (!isLive) return;
+    setIsNavigating(true);
+    prefetchListingBySymbol(normalizedSymbol, true); // start loading RWA data now so page can show instantly
+    if (normalizedSymbol === 'APK') {
+      router.push('/rwa/apk?openAuction=true');
+    } else if (normalizedSymbol === 'APKAWS') {
+      router.push('/rwa/apkaws?openAuction=true');
+    } else if (normalizedSymbol) {
+      router.push(`/rwa/${normalizedSymbol.toLowerCase()}?openAuction=true`);
+    } else {
+      setIsNavigating(false);
+    }
+  }, [router, normalizedSymbol, isLive]);
 
   // Enhanced null safety checks
   if (!imageInfo) {
@@ -448,9 +478,18 @@ export default function ImageDetailsModal({
                 duration: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 0.15,
               },
             }}
-            className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh] lg:h-[90vh] flex flex-col"
+            className="relative bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh] lg:h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Navigating overlay – keep modal open with spinner until page loads */}
+            {isNavigating && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl sm:rounded-3xl bg-black/80 backdrop-blur-sm">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#D0B264]/40 border-t-[#D0B264]" />
+                <p className="mt-4 text-sm sm:text-base text-[#D0B264]/90 font-syne">
+                  Loading…
+                </p>
+              </div>
+            )}
             {/* Scrollable Content Area */}
             <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
               {/* Image Section - Now with Lazy Loading */}
@@ -673,52 +712,41 @@ export default function ImageDetailsModal({
                 </div>
 
                 {/* Fixed Button Area */}
-                <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
-                  <div className="flex gap-3">
-                    {isDrvn ? (
-                      <button
-                        disabled
-                        className="flex-1 bg-zinc-800/60 text-zinc-300 border border-zinc-700 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center cursor-not-allowed"
-                      >
-                        Coming Soon
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleTradeClick}
-                        disabled={!isLive}
-                        className={`flex-1 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center transition-all duration-150 ${
-                          isLive
-                            ? 'bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] transform active:scale-[0.98] shadow-goldGlow md:hover:scale-[1.02] cursor-pointer'
-                            : 'bg-gradient-to-r from-[#D0B264]/20 to-[#D0B264]/15 text-[#D0B264]/50 border border-[#D0B264]/30 cursor-not-allowed opacity-60'
-                        }`}
-                      >
-                        TRADE
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (!isLive) return; // Prevent navigation if not live
-                        // Navigate to RWA page with auction modal auto-open
-                        stableOnClose();
-                        if (normalizedSymbol === 'APK') {
-                          router.push('/rwa/apk?openAuction=true');
-                        } else if (normalizedSymbol === 'APKAWS') {
-                          router.push('/rwa/apkaws?openAuction=true');
-                        } else if (normalizedSymbol) {
-                          router.push(`/rwa/${normalizedSymbol.toLowerCase()}?openAuction=true`);
-                        }
-                      }}
-                      disabled={!isLive}
-                      className={`flex-1 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center transition-all duration-150 ${
-                        isLive
-                          ? 'bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] transform active:scale-[0.98] shadow-goldGlow md:hover:scale-[1.02] border border-[#D0B264]/70 cursor-pointer'
-                          : 'bg-gradient-to-r from-[#231F20]/60 to-[#231F20]/50 text-[#D0B264]/50 border border-[#D0B264]/30 cursor-not-allowed opacity-60'
-                      }`}
-                    >
-                      AUCTION
-                    </button>
-                  </div>
-                </div>
+            <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
+              <div className="flex gap-3">
+                {isDrvn ? (
+                  <button
+                    disabled
+                    className="flex-1 bg-zinc-800/60 text-zinc-300 border border-zinc-700 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center cursor-not-allowed"
+                  >
+                    Coming Soon
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleTradeClick}
+                    disabled={!isLive || isNavigating}
+                    className={`flex-1 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center transition-all duration-150 ${
+                      isLive && !isNavigating
+                        ? 'bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] transform active:scale-[0.98] shadow-goldGlow md:hover:scale-[1.02] cursor-pointer'
+                        : 'bg-gradient-to-r from-[#D0B264]/20 to-[#D0B264]/15 text-[#D0B264]/50 border border-[#D0B264]/30 cursor-not-allowed opacity-60'
+                    }`}
+                  >
+                    TRADE
+                  </button>
+                )}
+                <button
+                  onClick={handleAuctionClick}
+                  disabled={!isLive || isNavigating}
+                  className={`flex-1 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center transition-all duration-150 ${
+                    isLive && !isNavigating
+                      ? 'bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] transform active:scale-[0.98] shadow-goldGlow md:hover:scale-[1.02] border border-[#D0B264]/70 cursor-pointer'
+                      : 'bg-gradient-to-r from-[#231F20]/60 to-[#231F20]/50 text-[#D0B264]/50 border border-[#D0B264]/30 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  AUCTION
+                </button>
+              </div>
+            </div>
               </div>
             </div>
           </motion.div>

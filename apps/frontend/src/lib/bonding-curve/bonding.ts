@@ -1,3 +1,8 @@
+/**
+ * @deprecated Bonding curve functionality has been removed. All tokens now operate in DEX mode only.
+ * This file is kept for backwards compatibility but should not be used for new code.
+ * Use DEX quotes instead via DexApi from '@/lib/api/dex'.
+ */
 import type { ApiResponse } from '@aces/utils';
 
 function getBondingApiBaseUrl(): string {

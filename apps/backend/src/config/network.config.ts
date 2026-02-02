@@ -26,7 +26,10 @@ const baseMainnet: NetworkConfig = {
 
 const baseSepolia: NetworkConfig = {
   chainId: 84532,
-  rpcUrl: process.env.QUICKNODE_BASE_SEPOLIA_RPC || '',
+  rpcUrl:
+    process.env.QUICKNODE_BASE_SEPOLIA_RPC ||
+    process.env.BASE_RPC_URL ||
+    'https://sepolia.base.org',
   aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS_BASE_SEPOLIA || '',
   aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS_BASE_SEPOLIA || '',
   acesToken:

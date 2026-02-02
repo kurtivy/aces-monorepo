@@ -7,25 +7,7 @@
 import { requestDeduplicator } from '@/lib/utils/request-deduplication';
 
 export interface TokenHealthData {
-  bondingData: {
-    curve: number;
-    currentSupply: string;
-    tokensBondedAt: string;
-    acesBalance: string;
-    floorWei: string;
-    floorPriceACES: string;
-    steepness: string;
-    isBonded: boolean;
-    bondingPercentage: number;
-    chainId: number;
-    lastUpdated: number;
-    bondingTargetSource?:
-      | 'default'
-      | 'contract'
-      | 'max_total_supply'
-      | 'subgraph'
-      | 'listing_parameters';
-  } | null;
+  bondingData: null; // Bonding curve removed - always null
 
   metricsData: {
     contractAddress: string;
@@ -77,13 +59,12 @@ function getCacheKey(tokenAddress: string, chainId: number, currency: 'usd' | 'a
 }
 
 function resolveApiBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  // Use relative paths for Next.js API routes
+  if (typeof window !== 'undefined') {
+    return ''; // Relative path - Next.js will handle routing
   }
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin;
-  }
-  return '';
+  // Server-side: use absolute URL if needed, otherwise relative
+  return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 }
 
 /**
@@ -109,7 +90,8 @@ export async function fetchTokenHealth(
 
   return requestDeduplicator.dedupe(dedupeKey, async () => {
     const apiUrl = resolveApiBaseUrl();
-    const url = `${apiUrl}/api/v1/tokens/${tokenAddress}/health?chainId=${chainId}&currency=${currency}`;
+    // Use simplified Next.js API route (no /v1)
+    const url = `${apiUrl}/api/tokens/${tokenAddress}/health?chainId=${chainId}&currency=${currency}`;
 
     const response = await fetch(url, {
       signal: AbortSignal.timeout(10000), // 10 second timeout

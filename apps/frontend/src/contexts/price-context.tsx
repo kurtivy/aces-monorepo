@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 
 interface PriceData {
   ethPrice: number;
@@ -25,13 +26,23 @@ const PriceContext = createContext<PriceContextValue | undefined>(undefined);
 const INITIAL_BACKOFF = 1000; // 1 second
 const MAX_BACKOFF = 30000; // 30 seconds
 const MAX_FAILURES = 5;
+/** Client timeout for price fetch; must be longer than server-side refresh (CoinGecko + RPC). */
+const FETCH_TIMEOUT_MS = 15000;
 
 interface PriceProviderProps {
   children: React.ReactNode;
   pollInterval?: number; // Default 10 seconds
 }
 
+/** Only fetch/poll prices on RWA token pages (desktop and mobile use same /rwa/[symbol] route). */
+function isRwaPriceRoute(pathname: string | null): boolean {
+  return typeof pathname === 'string' && pathname.startsWith('/rwa/');
+}
+
 export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderProps) {
+  const pathname = usePathname();
+  const shouldFetchPrices = isRwaPriceRoute(pathname);
+
   const [priceData, setPriceData] = useState<PriceData>({
     ethPrice: 0,
     acesPrice: 0,
@@ -51,26 +62,23 @@ export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderP
   const isPaused = useRef(false);
   const isMounted = useRef(true);
 
-  const resolveApiBaseUrl = useCallback(() => {
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  // Use frontend's own Next.js API route (same origin); no backend call
+  const getPricesUrl = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      return '/api/prices/aces-usd';
     }
-    // Fallback to Railway backend URL (not frontend origin)
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return 'http://localhost:3002';
-    }
-    return 'https://acesbackend-production.up.railway.app'; // Update this to your Railway URL
+    const base = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
+    return base ? `${base}/api/prices/aces-usd` : '/api/prices/aces-usd';
   }, []);
 
   const fetchPrices = useCallback(async () => {
-    if (isPaused.current || !isMounted.current) {
+    if (isPaused.current || !isMounted.current || !shouldFetchPrices) {
       return;
     }
 
     try {
-      const apiUrl = resolveApiBaseUrl();
-      const response = await fetch(`${apiUrl}/api/v1/prices/aces-usd`, {
-        signal: AbortSignal.timeout(5000),
+      const response = await fetch(getPricesUrl(), {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -137,7 +145,7 @@ export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderP
       setError(err instanceof Error ? err.message : 'Failed to fetch prices');
       setLoading(false);
     }
-  }, [resolveApiBaseUrl]);
+  }, [getPricesUrl, shouldFetchPrices]);
 
   const refresh = useCallback(() => {
     console.log('[PriceContext] Manual refresh triggered');
@@ -147,13 +155,26 @@ export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderP
     fetchPrices();
   }, [fetchPrices]);
 
-  // Initial fetch
+  // Initial fetch only on RWA token pages (desktop + mobile use /rwa/[symbol])
   useEffect(() => {
-    fetchPrices();
-  }, [fetchPrices]);
+    if (shouldFetchPrices) {
+      setLoading(true);
+      fetchPrices();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchPrices, shouldFetchPrices]);
 
-  // Set up polling interval
+  // Set up polling interval only on RWA token pages
   useEffect(() => {
+    if (!shouldFetchPrices) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
     const startPolling = () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -179,10 +200,12 @@ export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderP
         clearInterval(intervalRef.current);
       }
     };
-  }, [fetchPrices, pollInterval, priceData.lastUpdated]);
+  }, [fetchPrices, pollInterval, priceData.lastUpdated, shouldFetchPrices]);
 
-  // Handle visibility changes - pause when hidden, resume when visible
+  // Handle visibility changes - pause when hidden, resume when visible (only on RWA)
   useEffect(() => {
+    if (!shouldFetchPrices) return;
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
         console.log('[PriceContext] Tab hidden, pausing polling');
@@ -208,7 +231,7 @@ export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderP
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [fetchPrices]);
+  }, [fetchPrices, shouldFetchPrices]);
 
   // Cleanup on unmount
   useEffect(() => {

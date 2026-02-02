@@ -1,8 +1,9 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 // import { useAcesPrice } from '@/hooks/use-aces-price';
 
@@ -17,9 +18,10 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
   const [logoError, setLogoError] = useState(false);
   // const { acesUsdPrice, loading: priceLoading, error: priceError } = useAcesPrice();
 
-  const handleLogoClick = () => {
-    router.push('/');
-  };
+  // Prefetch home page when header mounts so logo click feels instant
+  useEffect(() => {
+    router.prefetch('/');
+  }, [router]);
 
   const handleLogoLoad = () => {
     setLogoLoaded(true);
@@ -48,9 +50,9 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
         <div className="grid items-center w-full grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]">
           {/* Left side - ACES.FUN Logo and Text */}
           <div className="flex items-center gap-2 sm:gap-4 min-w-0 sm:min-w-[250px]">
-            {/* Clickable Logo Only */}
-            <button
-              onClick={handleLogoClick}
+            {/* Clickable Logo - Link enables prefetch for instant navigation */}
+            <Link
+              href="/"
               className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0 cursor-pointer relative"
               aria-label="Navigate to home page"
             >
@@ -75,7 +77,7 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
                   <div className="w-4 h-4 sm:w-6 sm:h-6 border border-[#D0B284]/30 border-t-[#D0B284] rounded-full animate-spin"></div>
                 </div>
               )}
-            </button>
+            </Link>
             {/* Non-clickable Text - Hidden on mobile, visible on desktop */}
             <div className="hidden sm:flex items-center min-w-0">
               <span className="text-lg sm:text-2xl font-bold text-white mr-0.5 sm:mr-1 font-braah-one">
