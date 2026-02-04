@@ -4,6 +4,7 @@ import type React from 'react';
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import {
   Wallet,
   CreditCard,
@@ -45,6 +46,7 @@ export default function ConnectWalletProfile({
   isDropdownOpen,
   onDropdownChange,
 }: ConnectWalletProfileProps) {
+  const router = useRouter();
   const {
     isAuthenticated,
     isLoading,
@@ -205,7 +207,13 @@ export default function ConnectWalletProfile({
     // Connected Wallet Dropdown (only when auth is ready and profile/wallet resolved)
     return (
       <div className={className}>
-        <DropdownMenu open={isDropdownOpen} onOpenChange={onDropdownChange}>
+        <DropdownMenu
+          open={isDropdownOpen}
+          onOpenChange={(open) => {
+            if (open) router.prefetch('/profile');
+            onDropdownChange?.(open);
+          }}
+        >
           <DropdownMenuTrigger asChild>
             <Button
               className="flex items-center gap-2 text-[#D0B264] bg-black hover:bg-black/80 border border-dashed border-[#D0B264]/30 hover:border-[#D0B264]/60 hover:text-[#D0B264] transition-colors duration-150 px-2 py-2 rounded-md group"

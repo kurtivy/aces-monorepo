@@ -7,6 +7,7 @@ import AppProviders from '@/components/providers/app-providers';
 import { fontVariables } from '@/lib/fonts';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { ConvexAuthNextjsServerProvider } from '@convex-dev/auth/nextjs/server';
 
 export const metadata: Metadata = {
   title: 'ACES.fun',
@@ -54,22 +55,22 @@ export const metadata: Metadata = {
       version: 'next',
       imageUrl: 'https://aces.fun/aces-logo.png',
       button: {
-          title: `Launch ACES.fun`,
-          action: {
-                type: 'launch_frame',
-                name: 'ACES.fun',
-                 url: 'https://aces.fun',
-              splashImageUrl: 'https://aces.fun/aces-logo.png',
-              splashBackgroundColor: '#D0B264',
-          },
+        title: `Launch ACES.fun`,
+        action: {
+          type: 'launch_frame',
+          name: 'ACES.fun',
+          url: 'https://aces.fun',
+          splashImageUrl: 'https://aces.fun/aces-logo.png',
+          splashBackgroundColor: '#D0B264',
+        },
       },
-  }),
+    }),
   },
 };
 
-//  
+//
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: ReactNode;
@@ -127,13 +128,15 @@ export default function RootLayout({
           )}
       </head>
       <body className={`${fontVariables} font-body antialiased bg-black`}>
-        <ErrorBoundary>
-          <AppProviders>
-            <DeviceProvider>{children}</DeviceProvider>
-            <Analytics />
-            <SpeedInsights />
-          </AppProviders>
-        </ErrorBoundary>
+        <ConvexAuthNextjsServerProvider>
+          <ErrorBoundary>
+            <AppProviders>
+              <DeviceProvider>{children}</DeviceProvider>
+              <Analytics />
+              <SpeedInsights />
+            </AppProviders>
+          </ErrorBoundary>
+        </ConvexAuthNextjsServerProvider>
       </body>
     </html>
   );

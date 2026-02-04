@@ -71,6 +71,8 @@ const nextConfig: NextConfig = {
       'https://base.blockpi.network/v1/rpc/public',
       'https://base.gateway.tenderly.co',
       'https://1rpc.io',
+      'https://*.g.alchemy.com',
+      'https://*.quiknode.pro',
       'https://min-api.cryptocompare.com',
       'https://api.thegraph.com',
       'https://api.coingecko.com',
@@ -112,6 +114,18 @@ const nextConfig: NextConfig = {
 
     addConnectSrc(backendOrigin);
     addConnectSrc(backendWsOrigin);
+
+    // Add RPC URLs from env (wagmi/viem uses these for chain reads)
+    const rpcUrls = [
+      process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL,
+      process.env.QUICKNODE_BASE_URL,
+      process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL,
+      process.env.BASE_MAINNET_RPC_URL,
+      process.env.BASE_RPC_URL,
+    ];
+    for (const url of rpcUrls) {
+      addConnectSrc(normalizeOrigin(url));
+    }
 
     if (backendOrigin && backendOrigin.startsWith('https://')) {
       addConnectSrc(backendOrigin.replace('https://', 'wss://'));
@@ -617,7 +631,8 @@ export default withSentryConfig(nextConfig, {
   project: 'javascript-nextjs',
   authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: false,
-  widenClientFileUpload: true,
+  // Avoid build crash: SDK can read .length on undefined when widening client uploads
+  widenClientFileUpload: false,
   tunnelRoute: '/monitoring',
-  // hideSourceMaps: true,
+  hideSourceMaps: true,
 });

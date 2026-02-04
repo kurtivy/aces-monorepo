@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { fetchMutation } from 'convex/nextjs';
+import { api } from '../../../../../../convex/_generated/api';
+import { syncAppUserToPrisma } from '@/lib/convex-sync';
 
 /**
  * Decode JWT without verification (we trust Privy tokens)
@@ -21,7 +24,7 @@ function decodeJWT(
 /**
  * POST /api/v1/users/verify-or-create
  * Verify or create user from Privy authentication.
- * Called by frontend after successful Privy auth.
+ * Called by frontend after successful Privy auth. Convex = source of truth; then sync to Prisma.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -63,55 +66,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let user = await prisma.user.findUnique({
-      where: { privyDid },
+    const convexUser = await fetchMutation(api.users.getOrCreateUser, {
+      privyDid,
+      walletAddress: walletAddress ?? undefined,
+      email: email ?? undefined,
+      username: username ?? undefined,
     });
 
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          privyDid,
-          walletAddress: walletAddress || null,
-          email: email || null,
-          username: username || null,
-          role: 'TRADER',
-          isActive: true,
-          sellerStatus: 'NOT_APPLIED',
-        },
-      });
-    } else {
-      const updates: Record<string, unknown> = {};
-      if (walletAddress && user.walletAddress !== walletAddress) {
-        updates.walletAddress = walletAddress;
-      }
-      if (email && user.email !== email) {
-        updates.email = email;
-      }
-      if (username != null && user.username !== username) {
-        updates.username = username;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: { ...updates, updatedAt: new Date() },
-        });
-      }
-    }
+    await syncAppUserToPrisma(prisma, {
+      id: convexUser.id,
+      privyDid: convexUser.privyDid,
+      walletAddress: convexUser.walletAddress,
+      email: convexUser.email,
+      username: convexUser.username,
+      role: convexUser.role,
+      isActive: convexUser.isActive,
+      sellerStatus: convexUser.sellerStatus,
+      createdAt: convexUser.createdAt,
+      updatedAt: convexUser.updatedAt,
+    });
 
     const profile = {
-      id: user.id,
-      privyDid: user.privyDid,
-      walletAddress: user.walletAddress,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-      isActive: user.isActive,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      id: convexUser.id,
+      privyDid: convexUser.privyDid,
+      walletAddress: convexUser.walletAddress ?? null,
+      email: convexUser.email ?? null,
+      username: convexUser.username ?? null,
+      role: convexUser.role,
+      isActive: convexUser.isActive,
+      createdAt: new Date(convexUser.createdAt),
+      updatedAt: new Date(convexUser.updatedAt),
     };
 
-    const created = user.createdAt.getTime() > Date.now() - 10000;
+    const created = convexUser.createdAt > Date.now() - 10000;
 
     return NextResponse.json({
       success: true,

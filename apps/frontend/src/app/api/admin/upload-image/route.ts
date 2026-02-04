@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSupabase } from '@/lib/auth/route-auth';
+import { requireAdminConvex } from '@/lib/auth/route-auth';
 import { uploadProductImage } from '@/lib/product-storage';
 
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
@@ -12,7 +12,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSupabase(request);
+    await requireAdminConvex(request);
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json(

@@ -24,9 +24,20 @@ export async function GET(
       );
     }
 
-    // Get market cap from service
+    // Get market cap from service (null when token has no DEX pool)
     const marketCapService = getMarketCapService(prisma);
     const marketCapData = await marketCapService.getMarketCap(address, 8453); // Base Mainnet
+
+    if (!marketCapData) {
+      return NextResponse.json(
+        {
+          error: 'No market cap data',
+          message: 'Token has no DEX pool or pool reserves could not be fetched',
+          tokenAddress: address.toLowerCase(),
+        },
+        { status: 404 },
+      );
+    }
 
     const response = {
       tokenAddress: address.toLowerCase(),

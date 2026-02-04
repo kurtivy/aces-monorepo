@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
+import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
+import { fetchQuery, fetchMutation } from 'convex/nextjs';
+import { api } from '../../../convex/_generated/api';
 import { prisma } from '../prisma';
+import { syncAppUserToPrisma } from '../convex-sync';
 
 // Server-side Supabase client for JWT verification (no storage)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,8 +18,45 @@ export interface AdminUser {
 }
 
 /**
+ * Verify Convex Auth JWT and check admins table.
+ * Returns admin with app user id for use in listings (ownerId). Convex = source of truth; sync to Prisma.
+ */
+export async function requireAdminConvex(request: NextRequest): Promise<AdminUser> {
+  const bearer = request.headers.get('authorization');
+  const tokenFromHeader = bearer?.startsWith('Bearer ') ? bearer.slice(7).trim() : null;
+  const token = tokenFromHeader ?? (await convexAuthNextjsToken());
+  if (!token) {
+    throw new Error('UNAUTHORIZED');
+  }
+  const admin = await fetchQuery(api.admin.getCurrentAdmin, {}, { token });
+  if (!admin) {
+    throw new Error('UNAUTHORIZED');
+  }
+  const privyDid = `convex-admin:${admin._id}`;
+  const convexUser = await fetchMutation(api.users.getOrCreateUser, {
+    privyDid,
+    email: admin.email,
+    role: 'ADMIN',
+  });
+  await syncAppUserToPrisma(prisma, {
+    id: convexUser.id,
+    privyDid: convexUser.privyDid,
+    walletAddress: convexUser.walletAddress,
+    email: convexUser.email,
+    username: convexUser.username,
+    role: convexUser.role,
+    isActive: convexUser.isActive,
+    sellerStatus: convexUser.sellerStatus,
+    createdAt: convexUser.createdAt,
+    updatedAt: convexUser.updatedAt,
+  });
+  return { id: convexUser.id, email: convexUser.email || admin.email };
+}
+
+/**
  * Verify Supabase JWT and check ADMIN_EMAILS allowlist.
  * Returns admin user with Prisma User id for use in listings (ownerId).
+ * @deprecated Use requireAdminConvex for new admin routes.
  */
 export async function requireAdminSupabase(request: NextRequest): Promise<AdminUser> {
   const authHeader = request.headers.get('authorization');
@@ -68,27 +109,25 @@ export async function requireAdminSupabase(request: NextRequest): Promise<AdminU
     throw new Error('FORBIDDEN');
   }
 
-  // Find or create Prisma User for admin (needed for ownerId in listings)
   const privyDid = `supabase-admin:${supabaseUser.id}`;
-  let user = await prisma.user.findFirst({
-    where: { OR: [{ privyDid }, { email: supabaseUser.email }] },
-    select: { id: true, email: true },
+  const convexUser = await fetchMutation(api.users.getOrCreateUser, {
+    privyDid,
+    email: supabaseUser.email,
+    role: 'ADMIN',
   });
-
-  if (!user) {
-    user = await prisma.user.create({
-      data: {
-        privyDid,
-        email: supabaseUser.email,
-        role: 'ADMIN',
-        isActive: true,
-        sellerStatus: 'NOT_APPLIED',
-      },
-      select: { id: true, email: true },
-    });
-  }
-
-  return { id: user.id, email: user.email || supabaseUser.email };
+  await syncAppUserToPrisma(prisma, {
+    id: convexUser.id,
+    privyDid: convexUser.privyDid,
+    walletAddress: convexUser.walletAddress,
+    email: convexUser.email,
+    username: convexUser.username,
+    role: convexUser.role,
+    isActive: convexUser.isActive,
+    sellerStatus: convexUser.sellerStatus,
+    createdAt: convexUser.createdAt,
+    updatedAt: convexUser.updatedAt,
+  });
+  return { id: convexUser.id, email: convexUser.email || supabaseUser.email };
 }
 
 /**
@@ -149,86 +188,37 @@ export async function verifyPrivyToken(request: NextRequest): Promise<AuthUser |
     }
 
     const privyDid = decoded.sub;
-
-    // Look up user in database
-    let user = await prisma.user.findUnique({
-      where: { privyDid },
-      select: {
-        id: true,
-        privyDid: true,
-        walletAddress: true,
-        email: true,
-        role: true,
-        isActive: true,
-      },
+    const convexUser = await fetchMutation(api.users.getOrCreateUser, {
+      privyDid,
+      walletAddress: decoded.wallet_address ?? undefined,
+      email: decoded.email ?? undefined,
     });
 
-    if (!user) {
-      // Create new user if doesn't exist
-      const walletAddress = decoded.wallet_address || null;
-      const email = decoded.email || null;
+    await syncAppUserToPrisma(prisma, {
+      id: convexUser.id,
+      privyDid: convexUser.privyDid,
+      walletAddress: convexUser.walletAddress,
+      email: convexUser.email,
+      username: convexUser.username,
+      role: convexUser.role,
+      isActive: convexUser.isActive,
+      sellerStatus: convexUser.sellerStatus,
+      createdAt: convexUser.createdAt,
+      updatedAt: convexUser.updatedAt,
+    });
 
-      user = await prisma.user.create({
-        data: {
-          privyDid,
-          walletAddress,
-          email,
-          role: 'TRADER',
-          isActive: true,
-          sellerStatus: 'NOT_APPLIED',
-        },
-        select: {
-          id: true,
-          privyDid: true,
-          walletAddress: true,
-          email: true,
-          role: true,
-          isActive: true,
-        },
-      });
-    } else {
-      // Update user info if needed
-      const walletAddress = decoded.wallet_address || null;
-      const email = decoded.email || null;
-
-      const needsUpdate =
-        (walletAddress && user.walletAddress !== walletAddress) ||
-        (email && user.email !== email && !user.email);
-
-      if (needsUpdate) {
-        const updateData: {
-          walletAddress?: string | null;
-          email?: string | null;
-        } = {};
-
-        if (walletAddress && user.walletAddress !== walletAddress) {
-          updateData.walletAddress = walletAddress;
-        }
-
-        if (email && !user.email) {
-          updateData.email = email;
-        }
-
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: updateData,
-          select: {
-            id: true,
-            privyDid: true,
-            walletAddress: true,
-            email: true,
-            role: true,
-            isActive: true,
-          },
-        });
-      }
-    }
-
-    if (!user || !user.isActive) {
+    if (!convexUser.isActive) {
       return null;
     }
 
-    return user as AuthUser;
+    return {
+      id: convexUser.id,
+      privyDid: convexUser.privyDid,
+      walletAddress: convexUser.walletAddress ?? null,
+      email: convexUser.email ?? null,
+      role: convexUser.role,
+      isActive: convexUser.isActive,
+    };
   } catch (error) {
     console.error('❌ Error verifying Privy token:', error);
     return null;

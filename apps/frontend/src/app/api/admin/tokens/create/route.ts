@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/route-auth';
 import { prisma } from '@/lib/prisma';
+import { syncTokenToConvex } from '@/lib/convex-sync';
 import { z } from 'zod';
 
 const CreateTokenSchema = z.object({
@@ -22,7 +23,14 @@ export async function POST(request: NextRequest) {
     await requireAuth(request);
 
     const body = await request.json();
-    const { contractAddress, symbol, name, chainId, isFixedSupply } = CreateTokenSchema.parse(body);
+    const {
+      contractAddress,
+      symbol,
+      name,
+      chainId,
+      isFixedSupply,
+      decimals: decimalsStr,
+    } = CreateTokenSchema.parse(body);
 
     console.log(`[TOKEN] Creating token record: ${contractAddress}`);
 
@@ -60,6 +68,18 @@ export async function POST(request: NextRequest) {
         priceSource: 'BONDING_CURVE', // Will update to DEX when pool is created
         isActive: true,
       },
+    });
+
+    // Sync to Convex for profile holdings and future UI use
+    await syncTokenToConvex({
+      contractAddress: token.contractAddress,
+      symbol: token.symbol,
+      name: token.name,
+      chainId: token.chainId,
+      decimals:
+        decimalsStr != null && decimalsStr !== '' ? parseInt(decimalsStr, 10) : token.decimals,
+      listingId: token.listingId,
+      isActive: token.isActive,
     });
 
     console.log(`[TOKEN] Token created successfully: ${token.symbol}`);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSupabase } from '@/lib/auth/route-auth';
+import { requireAdminConvex } from '@/lib/auth/route-auth';
 import { prisma } from '@/lib/prisma';
 import { syncAllListingsToConvex, removeCanvasItemsNotInList } from '@/lib/convex-sync';
 
@@ -10,7 +10,7 @@ import { syncAllListingsToConvex, removeCanvasItemsNotInList } from '@/lib/conve
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSupabase(request);
+    await requireAdminConvex(request);
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json(

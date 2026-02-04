@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSupabase } from '@/lib/auth/route-auth';
+import { requireAdminConvex } from '@/lib/auth/route-auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
@@ -15,7 +15,7 @@ export async function PATCH(
   { params }: { params: Promise<{ address: string }> },
 ) {
   try {
-    await requireAdminSupabase(request);
+    await requireAdminConvex(request);
 
     const { address } = await params;
     const body = await request.json();

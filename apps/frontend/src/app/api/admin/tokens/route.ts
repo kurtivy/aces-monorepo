@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSupabase } from '@/lib/auth/route-auth';
+import { requireAdminConvex } from '@/lib/auth/route-auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
@@ -12,7 +12,7 @@ const AddTokenSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSupabase(request);
+    await requireAdminConvex(request);
 
     const tokens = await prisma.token.findMany({
       orderBy: { createdAt: 'desc' },
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSupabase(request);
+    await requireAdminConvex(request);
 
     const body = await request.json();
     const { contractAddress } = AddTokenSchema.parse(body);

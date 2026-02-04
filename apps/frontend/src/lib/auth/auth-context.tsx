@@ -186,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     privyAuthRef.current = privyAuthenticated;
   }, [privyAuthenticated]);
 
+  // Re-run when auth or connected wallet changes so backend profile stays in sync (Next.js API)
   useEffect(() => {
     if (privyAuthenticated && privyUser) {
       initializeAuth();
@@ -196,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading: false,
       }));
     }
-  }, [privyAuthenticated, privyUser, initializeAuth]);
+  }, [privyAuthenticated, privyUser, initializeAuth, primaryWalletAddress]);
 
   const [connectionAttempting, setConnectionAttempting] = useState(false);
 

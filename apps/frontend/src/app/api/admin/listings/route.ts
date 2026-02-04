@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSupabase } from '@/lib/auth/route-auth';
+import { requireAdminConvex } from '@/lib/auth/route-auth';
 import { prisma } from '@/lib/prisma';
 import { syncListingToConvex } from '@/lib/convex-sync';
 import { Prisma } from '@prisma/client';
@@ -33,7 +33,7 @@ const CreateListingSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSupabase(request);
+    await requireAdminConvex(request);
 
     const listings = await prisma.listing.findMany({
       orderBy: { createdAt: 'desc' },
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const admin = await requireAdminSupabase(request);
+    const admin = await requireAdminConvex(request);
 
     const body = await request.json();
     const data = CreateListingSchema.parse(body);

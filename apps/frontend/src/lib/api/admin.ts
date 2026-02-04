@@ -350,6 +350,32 @@ export class AdminApi {
   }
 
   /**
+   * Sync all Prisma tokens to Convex for backfill and repair.
+   */
+  static async syncTokens(token: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    synced?: number;
+    failed?: number;
+  }> {
+    return this.adminRequest('/sync-tokens', { method: 'POST' }, token);
+  }
+
+  /**
+   * One-time backfill: copy all Prisma users to Convex appUsers. Idempotent; safe to run multiple times.
+   */
+  static async syncUsersToConvex(token: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    synced?: number;
+    failed?: number;
+  }> {
+    return this.adminRequest('/sync-users-to-convex', { method: 'POST' }, token);
+  }
+
+  /**
    * Create token in database after on-chain creation
    */
   static async createTokenInDatabase(

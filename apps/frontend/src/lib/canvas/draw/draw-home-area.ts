@@ -90,7 +90,7 @@ export const drawHomeArea = (
   animationTime = 0,
   unitSize = UNIT_SIZE,
   opacity: number = 1, // Add opacity parameter
-  quadrantPrompts: readonly string[] = ['LAUNCH', 'DROPS'], // Updated default prompts
+  quadrantPrompts: readonly string[] = ['DOCS', 'DROPS'], // Updated default prompts
   capabilities: DeviceCapabilities, // Add capabilities parameter
 ) => {
   const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities);

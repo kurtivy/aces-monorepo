@@ -319,6 +319,8 @@ export default function AdminTokenLaunchPage() {
   const [listingResult, setListingResult] = useState<string | null>(null);
   const [syncCanvasLoading, setSyncCanvasLoading] = useState(false);
   const [syncCanvasResult, setSyncCanvasResult] = useState<string | null>(null);
+  const [syncUsersLoading, setSyncUsersLoading] = useState(false);
+  const [syncUsersResult, setSyncUsersResult] = useState<string | null>(null);
   const [createdListings, setCreatedListings] = useState<
     Array<{
       id: string;
@@ -546,8 +548,14 @@ export default function AdminTokenLaunchPage() {
     isChecking: false,
   });
 
-  // Check admin authentication and redirect if necessary
+  // Check admin authentication and redirect if necessary.
+  // Use a grace period so we don't redirect during Convex auth hydration (avoids
+  // bouncing back to login right after a successful sign-in).
+  const mountedAtRef = React.useRef<number>(Date.now());
   useEffect(() => {
+    const graceMs = 2500;
+    const elapsed = Date.now() - mountedAtRef.current;
+    if (elapsed < graceMs) return;
     if (!isAdminLoading && !isAdminAuthenticated) {
       router.push('/admin/login');
     }
@@ -1123,6 +1131,32 @@ export default function AdminTokenLaunchPage() {
       setSyncCanvasResult(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSyncCanvasLoading(false);
+    }
+  };
+
+  // One-time backfill: copy all Prisma users to Convex appUsers (idempotent).
+  const handleSyncUsersToConvex = async () => {
+    try {
+      setSyncUsersLoading(true);
+      setSyncUsersResult(null);
+      const token = await getAdminAccessToken();
+      if (!token) {
+        setSyncUsersResult('❌ Admin session expired. Please log in again.');
+        return;
+      }
+      const result = await AdminApi.syncUsersToConvex(token);
+      if (result.success) {
+        const parts = [result.message ?? 'Users synced to Convex.'];
+        if (result.synced != null) parts.push(`${result.synced} synced`);
+        if (result.failed != null && result.failed > 0) parts.push(`${result.failed} failed`);
+        setSyncUsersResult(`✅ ${parts.join('; ')}`);
+      } else {
+        setSyncUsersResult(`❌ ${result.error ?? 'Sync failed'}`);
+      }
+    } catch (error) {
+      setSyncUsersResult(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSyncUsersLoading(false);
     }
   };
 
@@ -2230,6 +2264,26 @@ export default function AdminTokenLaunchPage() {
                     )}
                   </Button>
 
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSyncUsersToConvex}
+                    disabled={syncUsersLoading}
+                    className="w-full border-amber-400/40 text-amber-200 hover:bg-amber-500/10"
+                  >
+                    {syncUsersLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Syncing users...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Sync users to Convex (one-time backfill)
+                      </>
+                    )}
+                  </Button>
+
                   {listingResult && (
                     <div
                       className={`p-3 rounded-lg border ${
@@ -2250,6 +2304,17 @@ export default function AdminTokenLaunchPage() {
                       }`}
                     >
                       {syncCanvasResult}
+                    </div>
+                  )}
+                  {syncUsersResult && (
+                    <div
+                      className={`p-3 rounded-lg border ${
+                        syncUsersResult.startsWith('✅')
+                          ? 'bg-green-500/10 border-green-400/20 text-green-300'
+                          : 'bg-red-500/10 border-red-400/20 text-red-300'
+                      }`}
+                    >
+                      {syncUsersResult}
                     </div>
                   )}
                 </CardContent>

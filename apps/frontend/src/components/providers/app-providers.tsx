@@ -37,8 +37,11 @@ const BASE_SEPOLIA_RPCS = [
   'https://1rpc.io/base-sepolia',
 ];
 
+// Prefer QuickNode / dedicated RPC (no rate limit). NEXT_PUBLIC_* required for client-side.
 const BASE_MAINNET_RPCS = [
+  process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL,
   process.env.QUICKNODE_BASE_URL,
+  process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL,
   process.env.BASE_MAINNET_RPC_URL,
   'https://mainnet.base.org',
   'https://base-rpc.publicnode.com',
@@ -81,7 +84,7 @@ export const wagmiConfig = createConfig({
 });
 
 const selectActiveWalletForWagmi: SetActiveWalletForWagmiType = ({ wallets }) => {
-  if (!wallets.length) {
+  if (!wallets?.length) {
     return undefined;
   }
 
@@ -182,59 +185,59 @@ export default function AppProviders({ children }: { children: ReactNode }) {
               <BondingDataProvider>
                 <MarketCapProvider>
                   <PrivyProvider
-                  appId={privyAppId}
-                  config={{
-                    loginMethods: ['wallet', 'email'],
-                    appearance: {
-                      theme: 'dark',
-                      accentColor: '#D0B264',
-                      logo: '/aces-logo.png',
-                      loginMessage: 'Connect your wallet to ACES',
-                      showWalletLoginFirst: true,
-                      walletList: [
-                        'base_account',
-                        'phantom',
-                        'metamask',
-                        'rabby_wallet',
-                        'wallet_connect',
-                      ],
-                    },
-                    embeddedWallets: {
-                      createOnLogin: 'all-users',
-                      requireUserPasswordOnCreate: false,
-                      showWalletUIs: true,
-                    },
-                    defaultChain: base,
-                    supportedChains: [base, baseSepolia],
-                    externalWallets: {
-                      coinbaseWallet: {
-                        connectionOptions: 'smartWalletOnly',
+                    appId={privyAppId}
+                    config={{
+                      loginMethods: ['wallet', 'email'],
+                      appearance: {
+                        theme: 'dark',
+                        accentColor: '#D0B264',
+                        logo: '/aces-logo.png',
+                        loginMessage: 'Connect your wallet to ACES',
+                        showWalletLoginFirst: true,
+                        walletList: [
+                          'base_account',
+                          'phantom',
+                          'metamask',
+                          'rabby_wallet',
+                          'wallet_connect',
+                        ],
                       },
-                      // Remove the phantom config - it's not a valid option here
-                    },
-                    legal: {
-                      termsAndConditionsUrl: 'https://aces.fun/terms',
-                      privacyPolicyUrl: 'https://aces.fun/privacy',
-                    },
-                  }}
-                >
-                  <WagmiProvider
-                    config={wagmiConfig}
-                    setActiveWalletForWagmi={selectActiveWalletForWagmi}
+                      embeddedWallets: {
+                        createOnLogin: 'all-users',
+                        requireUserPasswordOnCreate: false,
+                        showWalletUIs: true,
+                      },
+                      defaultChain: base,
+                      supportedChains: [base, baseSepolia],
+                      externalWallets: {
+                        coinbaseWallet: {
+                          connectionOptions: 'smartWalletOnly',
+                        },
+                        // Remove the phantom config - it's not a valid option here
+                      },
+                      legal: {
+                        termsAndConditionsUrl: 'https://aces.fun/terms',
+                        privacyPolicyUrl: 'https://aces.fun/privacy',
+                      },
+                    }}
                   >
-                    <AuthProvider>
-                      <ModalProvider>
-                        <NetworkBanner />
-                        {children}
-                        <GlobalModals />
-                      </ModalProvider>
-                    </AuthProvider>
-                  </WagmiProvider>
-                </PrivyProvider>
-              </MarketCapProvider>
-            </BondingDataProvider>
-          </PriceProvider>
-        </MiniAppProvider>
+                    <WagmiProvider
+                      config={wagmiConfig}
+                      setActiveWalletForWagmi={selectActiveWalletForWagmi}
+                    >
+                      <AuthProvider>
+                        <ModalProvider>
+                          <NetworkBanner />
+                          {children}
+                          <GlobalModals />
+                        </ModalProvider>
+                      </AuthProvider>
+                    </WagmiProvider>
+                  </PrivyProvider>
+                </MarketCapProvider>
+              </BondingDataProvider>
+            </PriceProvider>
+          </MiniAppProvider>
         </OnchainKitProvider>
       </ConvexClientProvider>
     </QueryClientProvider>

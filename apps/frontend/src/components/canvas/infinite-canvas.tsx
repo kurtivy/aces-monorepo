@@ -188,7 +188,7 @@ const InfiniteCanvas = ({
     viewState,
     imagesLoaded: imagesLoaded,
     canvasVisible: true /* Always draw so entrance animation can complete; opacity hides during intro */,
-    onCreateTokenClick: () => (window.location.href = 'https://www.aceofbase.fun'), // Navigate to aceofbase domain
+    onCreateTokenClick: () => (window.location.href = 'https://docs.aces.fun'), // Navigate to docs
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
     canvasRef: canvasRef,

@@ -17,15 +17,17 @@ const queryClient = new QueryClient({
   },
 });
 
-// Multiple RPC endpoints for Base Mainnet reliability
+// Prefer QuickNode / dedicated RPC (no rate limit). NEXT_PUBLIC_* required for client-side.
 const BASE_MAINNET_RPCS = [
+  process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL,
   process.env.QUICKNODE_BASE_URL,
+  process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL,
   process.env.BASE_MAINNET_RPC_URL,
   'https://mainnet.base.org',
   'https://base-rpc.publicnode.com',
   'https://base.blockpi.network/v1/rpc/public',
   'https://base.gateway.tenderly.co',
-];
+].filter((url): url is string => typeof url === 'string' && url.length > 0);
 
 // Multiple RPC endpoints for Base Sepolia reliability
 const BASE_SEPOLIA_RPCS = [

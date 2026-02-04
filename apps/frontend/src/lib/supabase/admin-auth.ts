@@ -1,3 +1,7 @@
+/**
+ * @deprecated Admin login now uses Convex Auth (email + password).
+ * This file is kept for reference only. Use Convex Auth and requireAdminConvex for admin routes.
+ */
 import { createClient } from '@supabase/supabase-js';
 
 // Admin-specific Supabase configuration

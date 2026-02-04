@@ -48,9 +48,10 @@ export class MarketCapService {
   }
 
   /**
-   * Get current market cap - DEX-only mode
+   * Get current market cap - DEX-only mode.
+   * Returns null when the token has no DEX pool or reserves (e.g. not yet on DEX, or no poolAddress in DB).
    */
-  async getMarketCap(tokenAddress: string, chainId: number = 8453): Promise<MarketCapData> {
+  async getMarketCap(tokenAddress: string, chainId: number = 8453): Promise<MarketCapData | null> {
     try {
       const normalizedAddress = tokenAddress.toLowerCase();
 
@@ -63,10 +64,13 @@ export class MarketCapService {
 
       this.cacheMisses++;
 
-      // All tokens are DEX-only now
+      // All tokens are DEX-only when they have a pool; otherwise no market cap
       const marketCapData = await this.getDexMarketCap(normalizedAddress, chainId);
+      if (!marketCapData) {
+        return null;
+      }
 
-      // Cache the result
+      // Cache the result only when we have data
       this.cache.set(normalizedAddress, {
         data: marketCapData,
         expiresAt: Date.now() + CACHE_TTL_MS,
@@ -75,26 +79,25 @@ export class MarketCapService {
       return marketCapData;
     } catch (error) {
       console.error(`[MarketCapService] Error fetching market cap for ${tokenAddress}:`, error);
-      throw error;
+      return null;
     }
   }
 
   /**
-   * Get market cap for DEX token
-   * Uses pool reserves
+   * Get market cap for DEX token from pool reserves.
+   * Returns null when the token has no pool or reserves (no throw).
    */
-  private async getDexMarketCap(tokenAddress: string, _chainId: number): Promise<MarketCapData> {
+  private async getDexMarketCap(
+    tokenAddress: string,
+    _chainId: number,
+  ): Promise<MarketCapData | null> {
     try {
-      // Get market cap from pool reserves
       const poolData = await this.getDexFromPoolReserves(tokenAddress);
-      if (poolData) {
-        return poolData;
-      }
+      return poolData ?? null;
     } catch (poolError) {
       console.warn('[MarketCapService] Pool reserves fetch failed:', poolError);
+      return null;
     }
-
-    throw new Error('Failed to fetch DEX market cap from pool reserves');
   }
 
   /**
