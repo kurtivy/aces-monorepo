@@ -10,7 +10,6 @@ export default function NotFound() {
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center text-[#D0B264]">
       <div className="transform scale-[0.85]">
-        {/* 404 Text */}
         <h1 className="font-neue-world text-6xl md:text-8xl font-bold mb-2 text-center">404</h1>
 
         {/* 404 Image */}
