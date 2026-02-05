@@ -1,6 +1,5 @@
 /**
  * Shown during route transitions (e.g. when clicking logo to go home).
- * Provides instant feedback so navigation doesn't feel sluggish.
  */
 export default function Loading() {
   return (
