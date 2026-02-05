@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     });
 
     const { fetchMutation } = await import('convex/nextjs');
-    const { api } = await import('../../../../../../convex/_generated/api');
+    const { api } = await import('../../../../../convex/_generated/api');
 
     let synced = 0;
     let failed = 0;

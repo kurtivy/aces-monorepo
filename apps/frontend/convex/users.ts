@@ -1,5 +1,9 @@
 import { query, mutation } from './_generated/server';
+import type { Doc } from './_generated/dataModel';
 import { v } from 'convex/values';
+
+/** Document shape for inserting into appUsers (no system fields). */
+type AppUserInsert = Omit<Doc<'appUsers'>, '_id' | '_creationTime'>;
 
 /** Generate a unique id for new users (Convex runtime supports crypto.randomUUID). */
 function generateId(): string {
@@ -176,8 +180,8 @@ function toAppUserDoc(args: {
   sellerStatus?: string;
   createdAt: number;
   updatedAt: number;
-}) {
-  const doc: Record<string, unknown> = {
+}): AppUserInsert {
+  const doc: AppUserInsert = {
     id: args.id,
     privyDid: args.privyDid,
     role: args.role,

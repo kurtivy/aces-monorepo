@@ -3,6 +3,8 @@
  * Only runs when NEXT_PUBLIC_CONVEX_URL is set (after `npx convex dev`).
  */
 
+import type { PrismaClient, UserRole, SellerStatus } from '@prisma/client';
+
 function getOrigin(): string {
   return (
     process.env.NEXT_PUBLIC_APP_ORIGIN ||
@@ -287,8 +289,31 @@ export type AppUserFromConvex = {
  * Upsert a Convex app user into Prisma so Listing.ownerId and other FKs keep working.
  * Call after getOrCreateUser / getById from Convex.
  */
+/** Map Convex role to Prisma UserRole (Prisma has no SELLER, map to TRADER). */
+function toPrismaRole(role: string): UserRole {
+  if (role === 'ADMIN') return 'ADMIN';
+  return 'TRADER'; // TRADER or SELLER from Convex
+}
+
+/** Map Convex sellerStatus to Prisma SellerStatus (APPLIED→PENDING, VERIFIED→APPROVED). */
+function toPrismaSellerStatus(status: string | null | undefined): SellerStatus {
+  switch (status) {
+    case 'PENDING':
+      return 'PENDING';
+    case 'APPROVED':
+      return 'APPROVED';
+    case 'REJECTED':
+      return 'REJECTED';
+    case 'APPLIED':
+    case 'VERIFIED':
+      return status === 'VERIFIED' ? 'APPROVED' : 'PENDING';
+    default:
+      return 'NOT_APPLIED';
+  }
+}
+
 export async function syncAppUserToPrisma(
-  prisma: { user: { upsert: (args: unknown) => Promise<unknown> } },
+  prisma: PrismaClient,
   user: AppUserFromConvex,
 ): Promise<void> {
   await prisma.user.upsert({
@@ -299,20 +324,18 @@ export async function syncAppUserToPrisma(
       walletAddress: user.walletAddress ?? null,
       email: user.email ?? null,
       username: user.username ?? null,
-      role: user.role as 'TRADER' | 'SELLER' | 'ADMIN',
+      role: toPrismaRole(user.role),
       isActive: user.isActive,
-      sellerStatus:
-        (user.sellerStatus as 'NOT_APPLIED' | 'APPLIED' | 'VERIFIED' | 'REJECTED') ?? 'NOT_APPLIED',
+      sellerStatus: toPrismaSellerStatus(user.sellerStatus),
     },
     update: {
       privyDid: user.privyDid,
       walletAddress: user.walletAddress ?? null,
       email: user.email ?? null,
       username: user.username ?? null,
-      role: user.role as 'TRADER' | 'SELLER' | 'ADMIN',
+      role: toPrismaRole(user.role),
       isActive: user.isActive,
-      sellerStatus:
-        (user.sellerStatus as 'NOT_APPLIED' | 'APPLIED' | 'VERIFIED' | 'REJECTED') ?? 'NOT_APPLIED',
+      sellerStatus: toPrismaSellerStatus(user.sellerStatus),
       updatedAt: new Date(user.updatedAt),
     },
   });

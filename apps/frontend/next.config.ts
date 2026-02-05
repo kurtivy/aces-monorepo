@@ -634,5 +634,7 @@ export default withSentryConfig(nextConfig, {
   // Avoid build crash: SDK can read .length on undefined when widening client uploads
   widenClientFileUpload: false,
   tunnelRoute: '/monitoring',
-  hideSourceMaps: true,
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
 });
