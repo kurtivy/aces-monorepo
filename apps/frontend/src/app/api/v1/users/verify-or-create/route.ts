@@ -25,9 +25,33 @@ function decodeJWT(
  * POST /api/v1/users/verify-or-create
  * Verify or create user from Privy authentication.
  * Called by frontend after successful Privy auth. Convex = source of truth; then sync to Prisma.
+ *
+ * Requires on Vercel (including preview branches):
+ * - NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY for the Convex deployment this branch uses.
  */
 export async function POST(request: NextRequest) {
   try {
+    // Fail fast with 503 when Convex is not configured (e.g. preview branch missing env vars)
+    const hasConvexUrl =
+      typeof process.env.NEXT_PUBLIC_CONVEX_URL === 'string' &&
+      process.env.NEXT_PUBLIC_CONVEX_URL.length > 0;
+    const hasDeployKey =
+      typeof process.env.CONVEX_DEPLOY_KEY === 'string' && process.env.CONVEX_DEPLOY_KEY.length > 0;
+    const isVercel = process.env.VERCEL === '1';
+    if (!hasConvexUrl || (isVercel && !hasDeployKey)) {
+      console.error(
+        '[verify-or-create] Convex not configured. On Vercel set NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY for this branch.',
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Profile service is not configured for this environment. Set NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY for this deployment.',
+        },
+        { status: 503 },
+      );
+    }
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
@@ -128,15 +152,22 @@ export async function POST(request: NextRequest) {
     }
     if (message.includes('CONVEX') || message.includes('convex')) {
       console.error(
-        '[verify-or-create] Fix: Set NEXT_PUBLIC_CONVEX_URL in Vercel and run `npx convex deploy` for production.',
+        '[verify-or-create] Fix: Set NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY in Vercel for this branch.',
       );
     }
+    // Convex/upstream often returns "[Request ID: ...] Server Error" - treat as 503 so UI can show "temporarily unavailable"
+    const isGenericUpstream =
+      /Request ID:.*Server Error/i.test(message) || message.includes('Server Error');
+    const status = isGenericUpstream ? 503 : 500;
+    const clientMessage = isGenericUpstream
+      ? 'Profile service is temporarily unavailable. Please try again in a moment.'
+      : message;
     return NextResponse.json(
       {
         success: false,
-        error: message,
+        error: clientMessage,
       },
-      { status: 500 },
+      { status },
     );
   }
 }

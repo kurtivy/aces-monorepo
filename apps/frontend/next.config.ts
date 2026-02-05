@@ -148,7 +148,7 @@ const nextConfig: NextConfig = {
       "form-action 'self'",
       "frame-ancestors 'self' https://acesbackend-production.up.railway.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io https://base.dev https://*.base.dev https://base.app https://*.base.app",
       'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org blob: data: https://*.tradingview.com https://dexscreener.com https://*.dexscreener.com',
-      'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com https://dexscreener.com https://*.dexscreener.com',
+      'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com https://dexscreener.com https://*.dexscreener.com https://vercel.live',
       `connect-src ${connectSrc.join(' ')}`,
       "worker-src 'self' blob:",
       "manifest-src 'self'",
