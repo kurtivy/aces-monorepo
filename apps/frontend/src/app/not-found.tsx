@@ -24,7 +24,6 @@ export default function NotFound() {
           />
         </div>
 
-        {/* Error Message */}
         <p className="font-proxima-nova text-xl md:text-2xl text-center text-[#D0B264]">
           Sorry, this page was not found
         </p>
