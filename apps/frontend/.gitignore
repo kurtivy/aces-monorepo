@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Convex dev→prod export (script output)
+convex-dev-export.zip
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
