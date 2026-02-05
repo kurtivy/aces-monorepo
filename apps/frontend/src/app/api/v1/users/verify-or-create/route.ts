@@ -108,11 +108,24 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[verify-or-create] Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[verify-or-create] Error:', message, stack ?? '');
+    // Log hint for common Vercel/production issues
+    if (message.includes('DIRECT_DATABASE_URL')) {
+      console.error(
+        '[verify-or-create] Fix: Set DIRECT_DATABASE_URL in Vercel project Environment Variables.',
+      );
+    }
+    if (message.includes('CONVEX') || message.includes('convex')) {
+      console.error(
+        '[verify-or-create] Fix: Set NEXT_PUBLIC_CONVEX_URL in Vercel and run `npx convex deploy` for production.',
+      );
+    }
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to verify or create user',
+        error: message,
       },
       { status: 500 },
     );
