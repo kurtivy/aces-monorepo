@@ -39,14 +39,17 @@ export async function POST(request: NextRequest) {
       typeof process.env.CONVEX_DEPLOY_KEY === 'string' && process.env.CONVEX_DEPLOY_KEY.length > 0;
     const isVercel = process.env.VERCEL === '1';
     if (!hasConvexUrl || (isVercel && !hasDeployKey)) {
-      console.error(
-        '[verify-or-create] Convex not configured. On Vercel set NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY for this branch.',
-      );
+      const missing =
+        !hasConvexUrl && isVercel && !hasDeployKey
+          ? 'NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY'
+          : !hasConvexUrl
+            ? 'NEXT_PUBLIC_CONVEX_URL'
+            : 'CONVEX_DEPLOY_KEY';
+      console.error('[verify-or-create] Convex not configured. Missing:', missing);
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Profile service is not configured for this environment. Set NEXT_PUBLIC_CONVEX_URL and CONVEX_DEPLOY_KEY for this deployment.',
+          error: `Profile service not configured: add ${missing} to this deployment's environment variables (Vercel → Project → Settings → Environment Variables).`,
         },
         { status: 503 },
       );
