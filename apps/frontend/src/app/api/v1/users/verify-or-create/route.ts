@@ -161,6 +161,11 @@ export async function POST(request: NextRequest) {
     // Convex/upstream often returns "[Request ID: ...] Server Error" - treat as 503 so UI can show "temporarily unavailable"
     const isGenericUpstream =
       /Request ID:.*Server Error/i.test(message) || message.includes('Server Error');
+    if (isGenericUpstream) {
+      console.error(
+        '[verify-or-create] Convex backend returned an error. Ensure the Convex deployment for this branch has the latest functions (Vercel Build Command should run `npx convex deploy --cmd "npm run build"` so Convex is deployed for this branch). Check Convex dashboard for this deployment and Vercel function logs for the full error.',
+      );
+    }
     const status = isGenericUpstream ? 503 : 500;
     const clientMessage = isGenericUpstream
       ? 'Profile service is temporarily unavailable. Please try again in a moment.'
@@ -169,6 +174,9 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: clientMessage,
+        ...(isGenericUpstream && {
+          hint: 'Convex backend error. Check Vercel build command runs convex deploy for this branch and Convex dashboard for this deployment.',
+        }),
       },
       { status },
     );
