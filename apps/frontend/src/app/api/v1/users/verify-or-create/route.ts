@@ -73,18 +73,27 @@ export async function POST(request: NextRequest) {
       username: username ?? undefined,
     });
 
-    await syncAppUserToPrisma(prisma, {
-      id: convexUser.id,
-      privyDid: convexUser.privyDid,
-      walletAddress: convexUser.walletAddress,
-      email: convexUser.email,
-      username: convexUser.username,
-      role: convexUser.role,
-      isActive: convexUser.isActive,
-      sellerStatus: convexUser.sellerStatus,
-      createdAt: convexUser.createdAt,
-      updatedAt: convexUser.updatedAt,
-    });
+    // Prisma sync is optional: only run when DIRECT_DATABASE_URL is set (e.g. Vercel env).
+    // Convex is the source of truth; profile is returned from Convex either way.
+    if (process.env.DIRECT_DATABASE_URL) {
+      try {
+        await syncAppUserToPrisma(prisma, {
+          id: convexUser.id,
+          privyDid: convexUser.privyDid,
+          walletAddress: convexUser.walletAddress,
+          email: convexUser.email,
+          username: convexUser.username,
+          role: convexUser.role,
+          isActive: convexUser.isActive,
+          sellerStatus: convexUser.sellerStatus,
+          createdAt: convexUser.createdAt,
+          updatedAt: convexUser.updatedAt,
+        });
+      } catch (prismaErr) {
+        console.error('[verify-or-create] Prisma sync failed (profile still returned):', prismaErr);
+        // Don't 500: we have a valid Convex user; Prisma is best-effort for FKs/listings.
+      }
+    }
 
     const profile = {
       id: convexUser.id,
