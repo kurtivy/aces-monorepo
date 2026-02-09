@@ -110,14 +110,23 @@ export interface LaunchResult {
  * Note: Many deployed launchers hardcode beneficiary=0, beneficiaryShare=0, bribeableShare=500 (5%).
  * After launch you can call setBribeableShare(percentage) on the returned locker if the contract allows.
  * @param options.skipSimulation - If true, skip callStatic and send the tx (e.g. to get a tx hash to inspect on Basescan when simulation always reverts).
- * @param options.gasLimit - Manual gas limit when skipSimulation is true (default 800000).
+ * @param options.gasLimit - Manual gas limit when skipSimulation is true (default 2200000; successful launch uses ~1.03M).
+ * @param options.maxFeePerGas - EIP-1559 max fee per gas (wei). Use with maxPriorityFeePerGas to increase chance of tx being mined.
+ * @param options.maxPriorityFeePerGas - EIP-1559 priority fee per gas (wei).
+ * @param options.nonce - Explicit nonce for the launch tx (e.g. from getTransactionCount after prior txs) to avoid gaps/reuse.
  */
 export async function launchCLPool(
   signer: ethers.Signer,
   params: LaunchParams,
   recipient: string,
   chainId: number = 8453,
-  options?: { skipSimulation?: boolean; gasLimit?: number },
+  options?: {
+    skipSimulation?: boolean;
+    gasLimit?: number;
+    maxFeePerGas?: ethers.BigNumberish;
+    maxPriorityFeePerGas?: ethers.BigNumberish;
+    nonce?: number;
+  },
 ): Promise<LaunchResult> {
   const addresses = getContractAddresses(chainId);
   const launcherAddress = addresses.AERODROME_CL_POOL_LAUNCHER;
@@ -158,26 +167,43 @@ export async function launchCLPool(
   ];
 
   const skipSimulation = options?.skipSimulation === true;
-  const gasLimit = options?.gasLimit ?? 800000;
+  const gasLimit = options?.gasLimit ?? 2200000;
+  const txOverrides: {
+    gasLimit: number;
+    maxFeePerGas?: ethers.BigNumber;
+    maxPriorityFeePerGas?: ethers.BigNumber;
+    nonce?: number;
+  } = {
+    gasLimit,
+  };
+  if (options?.maxFeePerGas != null)
+    txOverrides.maxFeePerGas = ethers.BigNumber.from(options.maxFeePerGas);
+  if (options?.maxPriorityFeePerGas != null)
+    txOverrides.maxPriorityFeePerGas = ethers.BigNumber.from(options.maxPriorityFeePerGas);
+  if (options?.nonce != null) txOverrides.nonce = options.nonce;
 
-  // Simulate first to get a clear revert reason if the tx would fail (unless skipSimulation)
+  // Simulate first to get a clear revert reason if the tx would fail (unless skipSimulation).
+  // Use explicit gasLimit so nodes with low estimateGas caps (e.g. 482309) don't fail the simulation.
   if (!skipSimulation) {
     try {
-      await launcher.callStatic.launch(launchParams, recipient);
+      await launcher.callStatic.launch(launchParams, recipient, { gasLimit });
     } catch (staticErr: unknown) {
       const err = staticErr as {
         reason?: string;
-        error?: { message?: string; data?: string };
+        error?: { message?: string; data?: string; error?: { data?: string } };
         data?: string;
         message?: string;
       };
-      const revertData =
+      // Try multiple places providers put revert data (ethers / RPC responses vary)
+      const rawData =
         typeof err.data === 'string' && err.data.length >= 10
           ? err.data
-          : typeof (err as { error?: { data?: string } }).error?.data === 'string' &&
-              (err as { error: { data: string } }).error.data.length >= 10
-            ? (err as { error: { data: string } }).error.data
-            : null;
+          : typeof err.error?.data === 'string' && err.error.data.length >= 10
+            ? err.error.data
+            : typeof err.error?.error?.data === 'string' && err.error.error.data.length >= 10
+              ? err.error.error.data
+              : null;
+      const revertData = rawData;
 
       let reason: string | undefined;
       if (err.reason && !err.reason.includes('missing revert data')) {
@@ -253,19 +279,51 @@ export async function launchCLPool(
   let tx: ethers.ContractTransaction | undefined;
   let receipt: ethers.ContractReceipt | undefined;
   try {
-    tx = await launcher.launch(launchParams, recipient, skipSimulation ? { gasLimit } : {});
-    receipt = await tx!.wait();
+    if (skipSimulation) {
+      // Build and send without estimateGas so the tx is always broadcast (even if it will revert).
+      // Otherwise ethers may run estimateGas first, which reverts, and the launch tx never gets sent.
+      const populated = await launcher.populateTransaction.launch(launchParams, recipient);
+      const sendTx = {
+        to: populated.to,
+        data: populated.data,
+        gasLimit: txOverrides.gasLimit,
+        ...(txOverrides.maxFeePerGas != null && { maxFeePerGas: txOverrides.maxFeePerGas }),
+        ...(txOverrides.maxPriorityFeePerGas != null && {
+          maxPriorityFeePerGas: txOverrides.maxPriorityFeePerGas,
+        }),
+        ...(txOverrides.nonce != null && { nonce: txOverrides.nonce }),
+      };
+      tx = await signer.sendTransaction(sendTx);
+    } else {
+      tx = await launcher.launch(launchParams, recipient, {});
+    }
+    // Wait for 0 confirmations so we get the receipt as soon as the tx is in a block (reduces chance of timeout before mined)
+    const awaited = await tx!.wait(0);
+    receipt = awaited ?? undefined;
+    // If tx reverted (status 0) or receipt is null, throw so we handle it in catch and show tx hash
+    if (!receipt || receipt.status === 0) {
+      const hash = tx?.hash;
+      throw Object.assign(new Error('Launch reverted on-chain.'), {
+        transactionHash: hash,
+        receipt: receipt ?? null,
+      });
+    }
   } catch (sendErr: unknown) {
     const err = sendErr as {
       transaction?: { hash?: string };
       transactionHash?: string;
-      receipt?: { transactionHash?: string; status?: number };
+      receipt?: { transactionHash?: string; status?: number; blockNumber?: number };
       data?: string;
       error?: { data?: string };
     };
     // Use the hash of the tx we just sent (most reliable); fall back to error props.
     const hash =
-      tx?.hash ?? err.transaction?.hash ?? err.transactionHash ?? err.receipt?.transactionHash;
+      tx?.hash ??
+      err.transaction?.hash ??
+      (err as { transactionHash?: string }).transactionHash ??
+      err.receipt?.transactionHash;
+    const receipt = err.receipt;
+    const mined = !!receipt && typeof receipt.blockNumber === 'number';
     const revertData =
       (typeof err.data === 'string' && err.data.length >= 10 ? err.data : null) ??
       (typeof err.error?.data === 'string' && err.error.data.length >= 10 ? err.error.data : null);
@@ -276,6 +334,9 @@ export async function launchCLPool(
       debugBlock =
         `\n\n--- Share with team (for debugging) ---\n` +
         (hash ? `Tx hash: ${hash}\nBasescan: https://basescan.org/tx/${hash}\n` : '') +
+        (mined
+          ? `Tx was mined (block ${receipt!.blockNumber}) and reverted.\n`
+          : 'Tx may have been dropped (not mined); hash may not appear on Basescan.\n') +
         (revertData ? `Error selector: ${selector}\nRaw revert data: ${revertData}\n` : '') +
         `Launcher: ${launcherAddress}\n` +
         `poolLauncherToken: ${params.poolLauncherToken}\n` +
@@ -287,7 +348,9 @@ export async function launchCLPool(
     if (hash) {
       const txHashStr = typeof hash === 'string' ? hash : undefined;
       const link = txHashStr ? `https://basescan.org/tx/${txHashStr}` : 'https://basescan.org';
-      const baseMsg = `Launch reverted. View tx: ${link} (Base mainnet). If the tx is not found, it may have been dropped; run with dryRun: true (no skipSimulation) to see the revert reason from simulation.`;
+      const baseMsg = mined
+        ? `Launch reverted on-chain. View tx: ${link} (Base mainnet).`
+        : `Launch failed. Tx hash: ${link} (Base mainnet). If Basescan says this transaction is not found, the tx was dropped (never included in a block). Try again with a higher gas price or check wallet nonce; or run with dryRun: true to see the revert reason from simulation.`;
       throw new Error(baseMsg + debugBlock);
     }
     throw sendErr;
@@ -296,12 +359,11 @@ export async function launchCLPool(
   // Launch(address indexed poolLauncherToken, address indexed pool, address indexed sender, PoolLauncherPool poolLauncherPool)
   let poolAddress = '';
   let lockerAddress = '';
+  const logs = receipt?.logs ?? [];
   const launchTopic = ethers.utils.id(
     'Launch(address,address,address,(uint32,address,address,address))',
   );
-  const launchLog = receipt!.logs?.find(
-    (log: { topics: string[] }) => log.topics[0] === launchTopic,
-  );
+  const launchLog = logs.find((log: { topics: string[] }) => log.topics[0] === launchTopic);
   if (launchLog && launchLog.topics && launchLog.topics[2]) {
     poolAddress = ethers.utils.getAddress('0x' + launchLog.topics[2].slice(26));
   }
@@ -314,17 +376,14 @@ export async function launchCLPool(
   }
   // Locker address is not in Launch event; it's the return value of launch(). Try to read from a subsequent log (e.g. LockerFactory).
   const lockerFactoryAddress = await launcher.lockerFactory?.().catch(() => null);
-  if (lockerFactoryAddress && receipt!.logs) {
-    for (let i = receipt!.logs.length - 1; i >= 0; i--) {
-      if (
-        receipt!.logs[i].address?.toLowerCase() === lockerFactoryAddress?.toLowerCase() &&
-        receipt!.logs[i].data
-      ) {
+  if (lockerFactoryAddress && logs.length > 0) {
+    for (let i = logs.length - 1; i >= 0; i--) {
+      if (logs[i].address?.toLowerCase() === lockerFactoryAddress?.toLowerCase() && logs[i].data) {
         try {
           const iface = new ethers.utils.Interface([
             'event LockerCreated(address locker, address owner)',
           ]);
-          const parsed = iface.parseLog(receipt!.logs[i]);
+          const parsed = iface.parseLog(logs[i]);
           if (parsed?.args?.locker) {
             lockerAddress = parsed.args.locker;
             break;
@@ -445,7 +504,10 @@ export async function getCLPoolAddress(
   }
   const rpcUrl =
     chainId === 8453
-      ? process.env.NEXT_PUBLIC_RPC_URL_BASE_MAINNET || 'https://mainnet.base.org'
+      ? process.env.QUICKNODE_BASE_URL ||
+        process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL ||
+        process.env.NEXT_PUBLIC_RPC_URL_BASE_MAINNET ||
+        'https://mainnet.base.org'
       : 'https://sepolia.base.org';
   const provider = new ethers.providers.JsonRpcProvider(rpcUrl, {
     name: chainId === 8453 ? 'base' : 'base-sepolia',
@@ -470,7 +532,10 @@ export async function getPoolAddress(
   }
   const rpcUrl =
     chainId === 8453
-      ? process.env.NEXT_PUBLIC_RPC_URL_BASE_MAINNET || 'https://mainnet.base.org'
+      ? process.env.QUICKNODE_BASE_URL ||
+        process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL ||
+        process.env.NEXT_PUBLIC_RPC_URL_BASE_MAINNET ||
+        'https://mainnet.base.org'
       : 'https://sepolia.base.org';
   const provider = new ethers.providers.JsonRpcProvider(rpcUrl, {
     name: chainId === 8453 ? 'base' : 'base-sepolia',

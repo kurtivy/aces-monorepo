@@ -74,6 +74,7 @@ export default defineSchema({
     decimals: v.optional(v.number()),
     listingId: v.optional(v.string()),
     isActive: v.boolean(),
+    poolAddress: v.optional(v.string()),
   })
     .index('by_contractAddress', ['contractAddress'])
     .index('by_chainId', ['chainId'])

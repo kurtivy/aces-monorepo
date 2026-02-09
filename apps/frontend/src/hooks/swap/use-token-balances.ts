@@ -67,9 +67,22 @@ export function useTokenBalances({
         switch (asset) {
           case 'ACES': {
             if (!acesContract) return;
-            const balance = await acesContract.balanceOf(address);
-            const formatted = ethers.utils.formatEther(balance);
-            setAcesBalance(formatted);
+            try {
+              const balance = await acesContract.balanceOf(address);
+              const formatted = ethers.utils.formatEther(balance);
+              setAcesBalance(formatted);
+            } catch (err) {
+              if (
+                err &&
+                typeof err === 'object' &&
+                'code' in err &&
+                err.code === 'CALL_EXCEPTION'
+              ) {
+                setAcesBalance('0');
+              } else {
+                throw err;
+              }
+            }
             break;
           }
 
@@ -164,7 +177,21 @@ export function useTokenBalances({
           const formattedAcesBalance = ethers.utils.formatEther(acesBalanceValue);
           setAcesBalance(formattedAcesBalance);
         } catch (error) {
-          if (!isCircuitBreakerError(error)) {
+          if (isCircuitBreakerError(error)) {
+            return;
+          }
+          // CALL_EXCEPTION = no contract at address (e.g. wrong network or not deployed)
+          if (
+            error &&
+            typeof error === 'object' &&
+            'code' in error &&
+            error.code === 'CALL_EXCEPTION'
+          ) {
+            console.warn(
+              '[useTokenBalances] ACES contract not available (wrong network or not deployed), showing 0',
+            );
+            setAcesBalance('0');
+          } else {
             throw error;
           }
         }

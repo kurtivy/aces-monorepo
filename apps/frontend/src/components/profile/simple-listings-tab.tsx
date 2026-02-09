@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useWalletClient } from 'wagmi';
+import { useWagmiEthersSigner } from '@/hooks/use-wagmi-ethers-signer';
 import { ethers } from 'ethers';
 import { useTokenMetrics } from '@/hooks/use-token-metrics';
 import { useRef } from 'react';
@@ -332,69 +333,6 @@ const LISTING_PLACEHOLDER =
   </svg>
 `);
 
-// Wagmi-to-Ethers signer hook for Privy Smart Wallet support
-function useWagmiEthersSigner() {
-  const { data: walletClient } = useWalletClient();
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
-  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-
-  useEffect(() => {
-    async function getSignerFromWagmi() {
-      if (!walletClient) {
-        console.log('⏸️ No Wagmi wallet client available');
-        setSigner(null);
-        setProvider(null);
-        return;
-      }
-
-      try {
-        console.log('🔗 Getting signer from Wagmi wallet client');
-        console.log('Wallet client details:', {
-          address: walletClient.account.address,
-          chainId: walletClient.chain.id,
-          chainName: walletClient.chain.name,
-        });
-
-        // Convert Viem wallet client to ethers signer
-        const { chain } = walletClient;
-
-        // Create a provider from the transport
-        const network = {
-          chainId: chain.id,
-          name: chain.name,
-        };
-
-        // Create ethers provider from wallet client transport
-        const ethersProvider = new ethers.providers.Web3Provider(
-          walletClient.transport as unknown as ethers.providers.ExternalProvider,
-          network,
-        );
-
-        // Get signer from provider
-        const ethersSigner = ethersProvider.getSigner();
-
-        // Verify signer works
-        const signerAddress = await ethersSigner.getAddress();
-        console.log('✅ Wagmi signer obtained and verified:', signerAddress);
-
-        setSigner(ethersSigner);
-        setProvider(ethersProvider);
-      } catch (error) {
-        console.error('❌ Failed to get Wagmi signer:', error);
-        if (error instanceof Error) {
-          console.error('Error details:', error.message);
-        }
-        setSigner(null);
-        setProvider(null);
-      }
-    }
-
-    getSignerFromWagmi();
-  }, [walletClient]);
-
-  return { signer, provider };
-}
-
 export function SimpleListingsTab({
   defaultShowPending: _defaultShowPending = false,
 }: {
@@ -668,54 +606,74 @@ export function SimpleListingsTab({
         setError(null); // Clear any previous errors
 
         const token = await getAccessToken();
-      if (!token) {
-        setError('Authentication required');
-        setMintingListingId(null);
-        return;
-      }
-
-      // Get token parameters from listing (admin already configured these)
-      const tokenParameters = listing.tokenParameters as any;
-      if (!tokenParameters) {
-        setError('Token parameters not found. Please contact admin.');
-        setMintingListingId(null);
-        return;
-      }
-
-      console.log('🚀 Minting token with parameters:', tokenParameters);
-
-      // Mint token using factory contract
-      const result = await createToken(
-        {
-          curve: tokenParameters.curve,
-          steepness: tokenParameters.steepness,
-          floor: tokenParameters.floor,
-          name: tokenParameters.name || listing.title,
-          symbol: tokenParameters.symbol || listing.symbol,
-          salt: tokenParameters.salt,
-          tokensBondedAt: tokenParameters.tokensBondedAt,
-          useVanityMining: false,
-        },
-        () => {}, // No progress callback needed
-      );
-
-      if (result.success && result.tokenAddress) {
-        console.log('✅ Token minted successfully:', result.tokenAddress);
-
-        // Confirm with backend - this will link token and set isLive = true
-        const confirmResult = await ListingsApi.mintToken(listing.id, result.tokenAddress, token);
-
-        if (confirmResult.success) {
-          await fetchListings();
-          alert(
-            `🎉 Token minted successfully!\n\nYour listing is now live on ACES.\n\nContract Address: ${result.tokenAddress}`,
-          );
-        } else {
-          setError(confirmResult.error || 'Failed to confirm token mint with backend');
+        if (!token) {
+          setError('Authentication required');
+          setMintingListingId(null);
+          return;
         }
-      } else {
-        // Check if user rejected the transaction
-        const errorMessage = result.error || 'Failed to mint token';
+
+        // Get token parameters from listing (admin already configured these)
+        const tokenParameters = listing.tokenParameters as any;
+        if (!tokenParameters) {
+          setError('Token parameters not found. Please contact admin.');
+          setMintingListingId(null);
+          return;
+        }
+
+        console.log('🚀 Minting token with parameters:', tokenParameters);
+
+        // Mint token using factory contract
+        const result = await createToken(
+          {
+            curve: tokenParameters.curve,
+            steepness: tokenParameters.steepness,
+            floor: tokenParameters.floor,
+            name: tokenParameters.name || listing.title,
+            symbol: tokenParameters.symbol || listing.symbol,
+            salt: tokenParameters.salt,
+            tokensBondedAt: tokenParameters.tokensBondedAt,
+            useVanityMining: false,
+          },
+          () => {}, // No progress callback needed
+        );
+
+        if (result.success && result.tokenAddress) {
+          console.log('✅ Token minted successfully:', result.tokenAddress);
+
+          // Confirm with backend - this will link token and set isLive = true
+          const confirmResult = await ListingsApi.mintToken(listing.id, result.tokenAddress, token);
+
+          if (confirmResult.success) {
+            await fetchListings();
+            alert(
+              `🎉 Token minted successfully!\n\nYour listing is now live on ACES.\n\nContract Address: ${result.tokenAddress}`,
+            );
+          } else {
+            setError(confirmResult.error || 'Failed to confirm token mint with backend');
+          }
+        } else {
+          // Check if user rejected the transaction
+          const errorMessage = result.error || 'Failed to mint token';
+          const isUserRejection =
+            errorMessage.toLowerCase().includes('user rejected') ||
+            errorMessage.toLowerCase().includes('user denied') ||
+            errorMessage.toLowerCase().includes('user cancelled') ||
+            errorMessage.toLowerCase().includes('transaction was rejected');
+
+          if (isUserRejection) {
+            console.log('ℹ️ User cancelled the transaction');
+            // Don't set error state for user cancellations - just silently reset
+            // User can try again by clicking the button
+          } else {
+            // Only set error for actual errors (not user cancellations)
+            setError(errorMessage);
+          }
+        }
+      } catch (err) {
+        console.error('Minting error:', err);
+
+        // Check if this is a user rejection
+        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
         const isUserRejection =
           errorMessage.toLowerCase().includes('user rejected') ||
           errorMessage.toLowerCase().includes('user denied') ||
@@ -724,33 +682,13 @@ export function SimpleListingsTab({
 
         if (isUserRejection) {
           console.log('ℹ️ User cancelled the transaction');
-          // Don't set error state for user cancellations - just silently reset
-          // User can try again by clicking the button
+          // Don't set error state for user cancellations
         } else {
-          // Only set error for actual errors (not user cancellations)
           setError(errorMessage);
         }
+      } finally {
+        setMintingListingId(null);
       }
-    } catch (err) {
-      console.error('Minting error:', err);
-
-      // Check if this is a user rejection
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
-      const isUserRejection =
-        errorMessage.toLowerCase().includes('user rejected') ||
-        errorMessage.toLowerCase().includes('user denied') ||
-        errorMessage.toLowerCase().includes('user cancelled') ||
-        errorMessage.toLowerCase().includes('transaction was rejected');
-
-      if (isUserRejection) {
-        console.log('ℹ️ User cancelled the transaction');
-        // Don't set error state for user cancellations
-      } else {
-        setError(errorMessage);
-      }
-    } finally {
-      setMintingListingId(null);
-    }
     },
     [createToken, fetchListings, getAccessToken],
   );
@@ -1345,304 +1283,318 @@ export function SimpleListingsTab({
             </div>
           );
         })()}
-      {isDetailsModalOpen && activeListing && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80">
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl border border-[#D7BF75]/25 bg-[#0f1511] shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-[#D7BF75]/15">
-              <div>
-                <h4 className="text-[#D0B284] text-lg font-semibold">
-                  {isReadOnly ? 'Listing Details' : 'Finalize Listing Details'}
-                </h4>
-                <p className="text-xs text-[#DCDDCC]/70 mt-1">
-                  {activeListing.title} • {activeListing.symbol}
-                </p>
+        {isDetailsModalOpen && activeListing && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80">
+            <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl border border-[#D7BF75]/25 bg-[#0f1511] shadow-2xl">
+              <div className="flex items-center justify-between p-6 border-b border-[#D7BF75]/15">
+                <div>
+                  <h4 className="text-[#D0B284] text-lg font-semibold">
+                    {isReadOnly ? 'Listing Details' : 'Finalize Listing Details'}
+                  </h4>
+                  <p className="text-xs text-[#DCDDCC]/70 mt-1">
+                    {activeListing.title} • {activeListing.symbol}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCloseDetails}
+                  className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
+                  aria-label="Close details"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCloseDetails}
-                className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
-                aria-label="Close details"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-96px)]">
-              <fieldset disabled={isReadOnly} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-[#D0B284]">Asset Title</Label>
-                    <Input
-                      value={formData.title}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          title: e.target.value,
-                        }))
-                      }
-                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[#D0B284]">Token Symbol</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white font-mono">
-                        $
-                      </span>
+              <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-96px)]">
+                <fieldset disabled={isReadOnly} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-[#D0B284]">Asset Title</Label>
                       <Input
-                        value={formData.symbol}
-                        onChange={(e) => {
-                          const next = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                        value={formData.title}
+                        onChange={(e) =>
                           setFormData((prev) => ({
                             ...prev,
-                            symbol: next,
-                          }));
-                          if (symbolCheckTimeout.current) {
-                            window.clearTimeout(symbolCheckTimeout.current);
-                          }
-                          setSymbolCheck({ status: 'checking' });
-                          symbolCheckTimeout.current = window.setTimeout(async () => {
-                            try {
-                              if (!next) {
-                                setSymbolCheck({ status: 'idle' });
-                                return;
-                              }
-                              const res = await ListingsApi.getListingBySymbol(next);
-                              if ((res as any).success && (res as any).data) {
-                                setSymbolCheck({
-                                  status: 'taken',
-                                  message: 'Symbol already exists',
-                                });
-                              } else {
-                                setSymbolCheck({
-                                  status: 'available',
-                                  message: 'Symbol available',
-                                });
-                              }
-                            } catch (err) {
-                              setSymbolCheck({ status: 'available' });
-                            }
-                          }, 400);
-                        }}
-                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
-                      />
-                      {symbolCheck.status !== 'idle' && (
-                        <div className="mt-1 text-xs">
-                          {symbolCheck.status === 'checking' && (
-                            <span className="text-[#D0B284]">Checking availability…</span>
-                          )}
-                          {symbolCheck.status === 'available' && (
-                            <span className="text-green-400">Symbol available</span>
-                          )}
-                          {symbolCheck.status === 'taken' && (
-                            <span className="text-red-400">Symbol already in use</span>
-                          )}
-                          {symbolCheck.status === 'error' && (
-                            <span className="text-yellow-300">Could not verify symbol</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-[#D0B284]">Story</Label>
-                    <Textarea
-                      value={formData.story ?? ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          story: e.target.value,
-                        }))
-                      }
-                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                      rows={4}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[#D0B284]">Details</Label>
-                    <Textarea
-                      value={formData.details ?? ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          details: e.target.value,
-                        }))
-                      }
-                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                      rows={4}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[#D0B284]">Provenance</Label>
-                    <Textarea
-                      value={formData.provenance ?? ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          provenance: e.target.value,
-                        }))
-                      }
-                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-[#D0B284]">Hype Sentence</Label>
-                    <Input
-                      value={formData.hypeSentence ?? ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          hypeSentence: e.target.value,
-                        }))
-                      }
-                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-[#D0B284]">Starting Bid (USD)</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">$</span>
-                        <Input
-                          value={formData.startingBidPrice ? parseInt(formData.startingBidPrice).toLocaleString() : ''}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/[^0-9]/g, '');
-                            setFormData((prev) => ({
-                              ...prev,
-                              startingBidPrice: value,
-                            }));
-                          }}
-                          className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                          placeholder="1,000"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-[#D0B284]">Reserve Price (USD)</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">$</span>
-                        <Input
-                          value={formData.reservePrice ? parseInt(formData.reservePrice).toLocaleString() : ''}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/[^0-9]/g, '');
-                            setFormData((prev) => ({
-                              ...prev,
-                              reservePrice: value,
-                            }));
-                          }}
-                          className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                          placeholder="5,000"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-[#D0B284]">Declared Value (USD)</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">$</span>
-                      <Input
-                        value={formData.value ? parseInt(formData.value).toLocaleString() : ''}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^0-9]/g, '');
-                          setFormData((prev) => ({
-                            ...prev,
-                            value: value,
-                          }));
-                        }}
-                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                        placeholder="15,000"
-                      />
-                    </div>
-                  </div>
-                  <ImageGalleryEditor
-                    value={onlyProductImages(formData.imageGallery)}
-                    onChange={(gallery: string[]) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        imageGallery: onlyProductImages(gallery),
-                      }))
-                    }
-                  />
-                </div>
-              </fieldset>
-              {!isReadOnly && (
-                <div className="flex justify-end space-x-4 pt-4 border-t border-[#D0B284]/20">
-                  <Button
-                    variant="ghost"
-                    onClick={handleCloseDetails}
-                    className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      try {
-                        setIsSubmitting(true);
-                        const token = await getAccessToken();
-                        if (!token || !expandedRow) return;
-                        const saveOnly = await ListingsApi.updateMyListing(
-                          expandedRow,
-                          {
-                            title: formData.title,
-                            symbol: formData.symbol,
-                            details: formData.description,
-                            assetDetails: formData.assetDetails,
-                            reservePrice: formData.reservePrice || undefined,
-                            startingBidPrice: formData.startingBidPrice || undefined,
-                            imageGallery: onlyProductImages(formData.imageGallery),
-                          },
-                          token,
-                        );
-                        if (!saveOnly.success) {
-                          setError(saveOnly.error || 'Failed to save listing');
-                          return;
+                            title: e.target.value,
+                          }))
                         }
-                        await fetchListings();
-                      } finally {
-                        setIsSubmitting(false);
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[#D0B284]">Token Symbol</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white font-mono">
+                          $
+                        </span>
+                        <Input
+                          value={formData.symbol}
+                          onChange={(e) => {
+                            const next = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                            setFormData((prev) => ({
+                              ...prev,
+                              symbol: next,
+                            }));
+                            if (symbolCheckTimeout.current) {
+                              window.clearTimeout(symbolCheckTimeout.current);
+                            }
+                            setSymbolCheck({ status: 'checking' });
+                            symbolCheckTimeout.current = window.setTimeout(async () => {
+                              try {
+                                if (!next) {
+                                  setSymbolCheck({ status: 'idle' });
+                                  return;
+                                }
+                                const res = await ListingsApi.getListingBySymbol(next);
+                                if ((res as any).success && (res as any).data) {
+                                  setSymbolCheck({
+                                    status: 'taken',
+                                    message: 'Symbol already exists',
+                                  });
+                                } else {
+                                  setSymbolCheck({
+                                    status: 'available',
+                                    message: 'Symbol available',
+                                  });
+                                }
+                              } catch (err) {
+                                setSymbolCheck({ status: 'available' });
+                              }
+                            }, 400);
+                          }}
+                          className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
+                        />
+                        {symbolCheck.status !== 'idle' && (
+                          <div className="mt-1 text-xs">
+                            {symbolCheck.status === 'checking' && (
+                              <span className="text-[#D0B284]">Checking availability…</span>
+                            )}
+                            {symbolCheck.status === 'available' && (
+                              <span className="text-green-400">Symbol available</span>
+                            )}
+                            {symbolCheck.status === 'taken' && (
+                              <span className="text-red-400">Symbol already in use</span>
+                            )}
+                            {symbolCheck.status === 'error' && (
+                              <span className="text-yellow-300">Could not verify symbol</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-[#D0B284]">Story</Label>
+                      <Textarea
+                        value={formData.story ?? ''}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            story: e.target.value,
+                          }))
+                        }
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                        rows={4}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[#D0B284]">Details</Label>
+                      <Textarea
+                        value={formData.details ?? ''}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            details: e.target.value,
+                          }))
+                        }
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                        rows={4}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[#D0B284]">Provenance</Label>
+                      <Textarea
+                        value={formData.provenance ?? ''}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            provenance: e.target.value,
+                          }))
+                        }
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-[#D0B284]">Hype Sentence</Label>
+                      <Input
+                        value={formData.hypeSentence ?? ''}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            hypeSentence: e.target.value,
+                          }))
+                        }
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-[#D0B284]">Starting Bid (USD)</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
+                            $
+                          </span>
+                          <Input
+                            value={
+                              formData.startingBidPrice
+                                ? parseInt(formData.startingBidPrice).toLocaleString()
+                                : ''
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9]/g, '');
+                              setFormData((prev) => ({
+                                ...prev,
+                                startingBidPrice: value,
+                              }));
+                            }}
+                            className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
+                            placeholder="1,000"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-[#D0B284]">Reserve Price (USD)</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
+                            $
+                          </span>
+                          <Input
+                            value={
+                              formData.reservePrice
+                                ? parseInt(formData.reservePrice).toLocaleString()
+                                : ''
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9]/g, '');
+                              setFormData((prev) => ({
+                                ...prev,
+                                reservePrice: value,
+                              }));
+                            }}
+                            className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
+                            placeholder="5,000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-[#D0B284]">Declared Value (USD)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
+                          $
+                        </span>
+                        <Input
+                          value={formData.value ? parseInt(formData.value).toLocaleString() : ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setFormData((prev) => ({
+                              ...prev,
+                              value: value,
+                            }));
+                          }}
+                          className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
+                          placeholder="15,000"
+                        />
+                      </div>
+                    </div>
+                    <ImageGalleryEditor
+                      value={onlyProductImages(formData.imageGallery)}
+                      onChange={(gallery: string[]) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          imageGallery: onlyProductImages(gallery),
+                        }))
                       }
-                    }}
-                    disabled={isSubmitting}
-                    className="bg-[#231F20] hover:bg-[#231F20]/80 text-[#D0B284] border border-[#D0B284]/30"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4 mr-2" />
-                        Save
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={handleSubmitDetails}
-                    disabled={isSubmitting}
-                    className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Finalizing...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4 mr-2" />
-                        Finalize Details
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
+                    />
+                  </div>
+                </fieldset>
+                {!isReadOnly && (
+                  <div className="flex justify-end space-x-4 pt-4 border-t border-[#D0B284]/20">
+                    <Button
+                      variant="ghost"
+                      onClick={handleCloseDetails}
+                      className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          setIsSubmitting(true);
+                          const token = await getAccessToken();
+                          if (!token || !expandedRow) return;
+                          const saveOnly = await ListingsApi.updateMyListing(
+                            expandedRow,
+                            {
+                              title: formData.title,
+                              symbol: formData.symbol,
+                              details: formData.description,
+                              assetDetails: formData.assetDetails,
+                              reservePrice: formData.reservePrice || undefined,
+                              startingBidPrice: formData.startingBidPrice || undefined,
+                              imageGallery: onlyProductImages(formData.imageGallery),
+                            },
+                            token,
+                          );
+                          if (!saveOnly.success) {
+                            setError(saveOnly.error || 'Failed to save listing');
+                            return;
+                          }
+                          await fetchListings();
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      disabled={isSubmitting}
+                      className="bg-[#231F20] hover:bg-[#231F20]/80 text-[#D0B284] border border-[#D0B284]/30"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleSubmitDetails}
+                      disabled={isSubmitting}
+                      className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Finalizing...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Finalize Details
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );

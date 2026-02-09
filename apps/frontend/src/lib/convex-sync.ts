@@ -67,6 +67,10 @@ export async function syncListingToConvex(listing: ListingForCanvas): Promise<vo
       isLive: listing.isLive,
       showOnDrops: listing.showOnDrops,
     });
+    // Enforce "exactly one featured" in Convex so the featured section shows this listing
+    if (listing.isFeatured) {
+      await fetchMutation(api.canvasItems.setFeatured, { id: listing.id });
+    }
   } catch (err) {
     console.error('[Convex] syncListingToConvex failed:', err);
   }

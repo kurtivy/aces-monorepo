@@ -142,10 +142,13 @@ export function useAcesFactoryContract(
         let rpcUrl: string;
 
         if (currentChainId === 8453) {
-          // Base Mainnet
+          // Base Mainnet (use NEXT_PUBLIC_* so client bundle has RPC URL; server-only vars are undefined in browser)
           rpcUrl =
+            (process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL as string) ||
+            (process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL as string) ||
             (process.env.QUICKNODE_BASE_URL as string) ||
-            (process.env.BASE_MAINNET_RPC_URL as string);
+            (process.env.BASE_MAINNET_RPC_URL as string) ||
+            'https://mainnet.base.org';
         } else if (currentChainId === 84532) {
           // Base Sepolia
           rpcUrl = 'https://sepolia.base.org';

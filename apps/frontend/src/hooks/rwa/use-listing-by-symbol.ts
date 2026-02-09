@@ -33,7 +33,10 @@ interface CachedListing {
 }
 
 const listingCache = new Map<string, CachedListing>();
-const pendingFetches = new Map<string, Promise<{ listing: DatabaseListing; health: TokenHealthData | null } | null>>();
+const pendingFetches = new Map<
+  string,
+  Promise<{ listing: DatabaseListing; health: TokenHealthData | null } | null>
+>();
 
 async function fetchListingBySymbolInternal(
   symbol: string,
@@ -80,6 +83,18 @@ async function fetchListingBySymbol(
     pendingFetches.set(key, pending);
   }
   return pending;
+}
+
+/**
+ * Invalidate cached listing for a symbol so the next fetch (e.g. on RWA page or refetch) gets fresh data.
+ * Call after updating token pool address so the RWA page shows DEX mode without manual refresh.
+ */
+export function invalidateListingCache(symbol: string): void {
+  const s = symbol?.trim().toLowerCase();
+  if (!s) return;
+  for (const key of listingCache.keys()) {
+    if (key.startsWith(`${s}:`)) listingCache.delete(key);
+  }
 }
 
 /**

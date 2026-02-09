@@ -31,6 +31,7 @@ export class AdminApi {
     const response = await fetch(url, {
       ...options,
       headers,
+      credentials: 'include',
     });
 
     console.log('📥 Response received:', {

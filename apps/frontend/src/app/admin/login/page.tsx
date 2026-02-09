@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuthActions } from '@convex-dev/auth/react';
 import { useAdminAuth } from '@/lib/auth/admin-auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,28 +11,40 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Loader2, AlertCircle, Home, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 
+const TOKEN_LAUNCH_PATH = '/admin/token-launch';
+
 type Mode = 'signIn' | 'signUp';
 
+function friendlyAuthError(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('invalid') || lower.includes('invalidsecret')) {
+    return 'Invalid email or password.';
+  }
+  if (lower.includes('already exists')) {
+    return 'This email already has an account. Use Sign in instead.';
+  }
+  return message;
+}
+
 export default function AdminLoginPage() {
+  const { signIn } = useAuthActions();
   const {
     isAuthenticated: isAdminAuthenticated,
     isLoading: isAdminLoading,
-    login: adminLogin,
-    signUp: adminSignUp,
+    adminAuthToken,
     error: adminError,
   } = useAdminAuth();
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signIn');
   const [adminCredentials, setAdminCredentials] = useState({ email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signUpSuccess, setSignUpSuccess] = useState(false);
 
-  // Redirect only when already authenticated (e.g. landed with session); avoid double-redirect after form submit
+  // Redirect when already authenticated as admin
   useEffect(() => {
     if (!isAdminLoading && isAdminAuthenticated && !isSubmitting) {
-      router.replace('/admin/token-launch');
+      router.replace(TOKEN_LAUNCH_PATH);
     }
   }, [isAdminAuthenticated, isAdminLoading, isSubmitting, router]);
 
@@ -42,48 +55,38 @@ export default function AdminLoginPage() {
     setSignUpSuccess(false);
 
     try {
-      const action = mode === 'signUp' ? adminSignUp : adminLogin;
-      const result = await action(adminCredentials.email, adminCredentials.password);
+      const result = await signIn('password', {
+        flow: mode === 'signUp' ? 'signUp' : 'signIn',
+        email: adminCredentials.email.trim(),
+        password: adminCredentials.password,
+      });
 
-      if (!result.success) {
-        setError(result.error || 'Something went wrong. Please try again.');
-        setIsSubmitting(false);
+      if (result.signingIn) {
+        if (mode === 'signUp') {
+          setSignUpSuccess(true);
+          setIsSubmitting(false);
+          return;
+        }
+        router.replace(TOKEN_LAUNCH_PATH);
         return;
       }
 
-      if (mode === 'signUp') {
-        setSignUpSuccess(true);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Ensure the browser has committed the Set-Cookie from the response before navigating
-      setIsRedirecting(true);
-      await new Promise((r) => setTimeout(r, 150));
-      window.location.assign('/admin/token-launch');
+      setError('Sign-in did not complete. Please try again.');
     } catch (err) {
-      setError(
-        mode === 'signUp' ? 'Sign-up failed. Please try again.' : 'Login failed. Please try again.',
-      );
+      const message =
+        err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setError(friendlyAuthError(message));
+    } finally {
       setIsSubmitting(false);
     }
   };
 
+  const signedInButNotAdmin =
+    !isAdminLoading && !isAdminAuthenticated && adminAuthToken && adminAuthToken.trim().length > 0;
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      {/* Loading overlay for redirection */}
-      {isRedirecting && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-black border border-purple-400/20 rounded-lg p-8 text-center">
-            <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
-            <h3 className="text-white font-libre-caslon text-xl mb-2">Loading Token Launch</h3>
-            <p className="text-[#DCDDCC] font-jetbrains">Preparing your admin environment...</p>
-          </div>
-        </div>
-      )}
-
       <div className="w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <Shield className="w-12 h-12 text-purple-400 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-white font-libre-caslon mb-2">Admin Dashboard</h1>
@@ -97,7 +100,20 @@ export default function AdminLoginPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Sign up success: remind to run seedAdmin */}
+            {signedInButNotAdmin && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                <p className="font-medium">Signed in but not an admin</p>
+                <p className="mt-1 text-[#DCDDCC]">
+                  Run the <strong>seedAdmin</strong> mutation in the Convex dashboard with your
+                  email to get admin access, then refresh this page.
+                </p>
+                <p className="mt-1 text-xs text-[#DCDDCC]/80">
+                  Dashboard → Functions → admin:seedAdmin → Run with{' '}
+                  {`{ "email": "${adminCredentials.email || 'your@email.com'}" }`}
+                </p>
+              </div>
+            )}
+
             {signUpSuccess && (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
                 <p className="font-medium">Account created</p>
@@ -131,7 +147,7 @@ export default function AdminLoginPage() {
                     setAdminCredentials((prev) => ({ ...prev, email: e.target.value }))
                   }
                   className="bg-black border-purple-400/20 text-white"
-                  disabled={isSubmitting || isRedirecting}
+                  disabled={isSubmitting}
                   required
                 />
               </div>
@@ -148,23 +164,18 @@ export default function AdminLoginPage() {
                     setAdminCredentials((prev) => ({ ...prev, password: e.target.value }))
                   }
                   className="bg-black border-purple-400/20 text-white"
-                  disabled={isSubmitting || isRedirecting}
+                  disabled={isSubmitting}
                   required
                 />
               </div>
 
               <Button
                 type="submit"
-                disabled={isSubmitting || isRedirecting}
+                disabled={isSubmitting}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white"
                 size="lg"
               >
-                {isRedirecting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Redirecting to Token Launch...
-                  </>
-                ) : isSubmitting ? (
+                {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     {mode === 'signUp' ? 'Creating account...' : 'Authenticating...'}
@@ -182,7 +193,7 @@ export default function AdminLoginPage() {
                 )}
               </Button>
 
-              <div className="text-center">
+              <div className="text-center space-y-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -194,6 +205,12 @@ export default function AdminLoginPage() {
                 >
                   {mode === 'signIn' ? 'Create an account instead' : 'Sign in instead'}
                 </button>
+                {mode === 'signIn' && (
+                  <p className="text-xs text-[#DCDDCC]/70 font-jetbrains">
+                    Forgot password? Run the <strong>admin:resetAdminPassword</strong> mutation in
+                    the Convex Dashboard with your email and a new password (see convex/admin.ts).
+                  </p>
+                )}
               </div>
             </form>
 

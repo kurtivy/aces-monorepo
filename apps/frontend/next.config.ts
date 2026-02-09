@@ -48,10 +48,13 @@ const nextConfig: NextConfig = {
       "'self'",
       'http://localhost:3000',
       'http://localhost:3002',
+      'http://localhost:8545',
       'ws://localhost:3000',
       'wss://localhost:3000',
       'ws://localhost:3002',
       'wss://localhost:3002',
+      'ws://localhost:8545',
+      'wss://localhost:8545',
       'https://auth.privy.io',
       'wss://relay.walletconnect.com',
       'wss://relay.walletconnect.org',
@@ -203,6 +206,11 @@ const nextConfig: NextConfig = {
     return {
       // Multi-tenant rewrites come first (beforeFiles)
       beforeFiles: [
+        // Serve Farcaster manifest at standard path (avoids dot-directory in app which breaks build)
+        {
+          source: '/.well-known/farcaster.json',
+          destination: '/api/well-known/farcaster.json',
+        },
         // Rewrite admin.aces.fun requests to /admin routes (excluding static assets)
         {
           source:

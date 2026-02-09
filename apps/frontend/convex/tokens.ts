@@ -9,6 +9,7 @@ const tokenValidator = {
   decimals: v.optional(v.number()),
   listingId: v.optional(v.string()),
   isActive: v.boolean(),
+  poolAddress: v.optional(v.string()),
 };
 
 /**
@@ -22,6 +23,20 @@ export const list = query({
       .withIndex('by_isActive', (q) => q.eq('isActive', true))
       .order('asc')
       .collect();
+  },
+});
+
+/**
+ * List active tokens that are not linked to a listing (for admin token-launch dropdown).
+ */
+export const listUnlinked = query({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db
+      .query('tokens')
+      .withIndex('by_isActive', (q) => q.eq('isActive', true))
+      .collect();
+    return all.filter((t) => !t.listingId || t.listingId === '');
   },
 });
 
@@ -59,6 +74,7 @@ export const insertToken = mutation({
         decimals: args.decimals,
         listingId: args.listingId,
         isActive: args.isActive,
+        poolAddress: args.poolAddress,
       });
       return existing._id;
     }

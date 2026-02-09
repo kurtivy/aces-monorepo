@@ -16,11 +16,14 @@ let productBucket: ReturnType<Storage['bucket']> | null = null;
 let productBucketName = '';
 
 if (hasGoogleCloudCredentials) {
-  let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || '';
+  let privateKey = (process.env.GOOGLE_CLOUD_PRIVATE_KEY || '').trim();
   if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-    privateKey = privateKey.slice(1, -1);
+    privateKey = privateKey.slice(1, -1).trim();
   }
-  privateKey = privateKey.replace(/\\n/g, '\n');
+  // Support both single-line (literal \n) and multi-line PEM from .env
+  if (!privateKey.includes('\n')) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
 
   productStorage = new Storage({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,

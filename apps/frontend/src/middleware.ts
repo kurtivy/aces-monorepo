@@ -1,21 +1,25 @@
 import {
   convexAuthNextjsMiddleware,
+  createRouteMatcher,
   nextjsMiddlewareRedirect,
 } from '@convex-dev/auth/nextjs/server';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+
+const isAdminLoginPage = createRouteMatcher(['/admin/login', '/admin/unauthorized']);
+const isAdminProtectedRoute = createRouteMatcher(['/admin/(.*)']);
+
+const ADMIN_AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export default convexAuthNextjsMiddleware(
   async (request, { convexAuth }) => {
     const { pathname } = request.nextUrl;
     const host = request.headers.get('host') || '';
 
-    // Protect /admin routes: redirect to login if not authenticated (except login and unauthorized)
-    if (
-      pathname.startsWith('/admin') &&
-      pathname !== '/admin/login' &&
-      pathname !== '/admin/unauthorized'
-    ) {
+    const skipAdminAuth =
+      pathname === '/admin/token-launch' && process.env.NEXT_PUBLIC_SKIP_ADMIN_AUTH !== 'false';
+
+    if (!skipAdminAuth && isAdminProtectedRoute(request) && !isAdminLoginPage(request)) {
       const authenticated = await convexAuth.isAuthenticated();
       if (!authenticated) {
         return nextjsMiddlewareRedirect(request, '/admin/login');
@@ -64,6 +68,7 @@ export default convexAuthNextjsMiddleware(
   },
   {
     apiRoute: '/api/auth',
+    cookieConfig: { maxAge: ADMIN_AUTH_COOKIE_MAX_AGE },
   },
 );
 

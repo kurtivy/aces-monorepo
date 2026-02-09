@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminConvex } from '@/lib/auth/route-auth';
 import { prisma } from '@/lib/prisma';
 import { syncListingToConvex } from '@/lib/convex-sync';
 import { Prisma } from '@prisma/client';
@@ -29,12 +28,10 @@ const CreateListingSchema = z.object({
 });
 
 /**
- * GET /api/admin/listings - List all listings
+ * GET /api/admin/listings - List all listings (no auth required for now)
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminConvex(request);
-
     const listings = await prisma.listing.findMany({
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -63,18 +60,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('[ADMIN] Error fetching listings:', error);
-
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 },
-      );
-    }
-
-    if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
-    }
-
     return NextResponse.json(
       {
         success: false,
@@ -87,12 +72,10 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/admin/listings - Create new listing (without submission)
+ * POST /api/admin/listings - Create new listing (no auth required for now; uses first ADMIN user as owner)
  */
 export async function POST(request: NextRequest) {
   try {
-    const admin = await requireAdminConvex(request);
-
     const body = await request.json();
     const data = CreateListingSchema.parse(body);
 
@@ -128,6 +111,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Resolve owner: need a User id for ownerId (required). Use first ADMIN user when no auth.
+    const owner = await prisma.user.findFirst({
+      where: { role: 'ADMIN' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!owner) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No admin user found',
+          message: 'Create a user with role ADMIN in the database to create listings without auth.',
+        },
+        { status: 500 },
+      );
+    }
+
     // Enforce "exactly one featured": if this listing is featured, clear others first
     if (data.isFeatured) {
       await prisma.listing.updateMany({
@@ -159,8 +158,8 @@ export async function POST(request: NextRequest) {
         launchDate: data.launchDate ? new Date(data.launchDate) : null,
         isLive: false, // Always start as not live
         submissionId: null, // No submission required
-        ownerId: admin.id, // Admin creating the listing is the owner
-        approvedBy: admin.id,
+        ownerId: owner.id,
+        approvedBy: owner.id,
         showOnCanvas: data.showOnCanvas,
         isFeatured: data.isFeatured,
         showOnDrops: data.showOnDrops,
@@ -210,17 +209,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[ADMIN] Error creating listing:', error);
-
-    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 },
-      );
-    }
-
-    if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
-    }
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(

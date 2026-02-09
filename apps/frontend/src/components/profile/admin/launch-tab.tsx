@@ -8,6 +8,7 @@ import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contr
 import { type SaltMiningResult, mineVanitySaltWithTimeout } from '@/lib/utils/salt-mining';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useWalletClient } from 'wagmi';
+import { useWagmiEthersSigner } from '@/hooks/use-wagmi-ethers-signer';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
 import { Button } from '@/components/ui/button';
@@ -37,70 +38,6 @@ import {
 
 // Removed restrictive max floor value - let the contract handle validation
 // const MAX_FLOOR_VALUE = ethers.BigNumber.from('1000000000');
-
-// Wagmi-to-Ethers signer hook (Solution 2: Better Privy Smart Wallet support)
-function useWagmiEthersSigner() {
-  const { data: walletClient } = useWalletClient();
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
-  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-
-  useEffect(() => {
-    async function getSignerFromWagmi() {
-      if (!walletClient) {
-        console.log('⏸️ No Wagmi wallet client available');
-        setSigner(null);
-        setProvider(null);
-        return;
-      }
-
-      try {
-        console.log('🔗 Getting signer from Wagmi wallet client');
-        console.log('Wallet client details:', {
-          address: walletClient.account.address,
-          chainId: walletClient.chain.id,
-          chainName: walletClient.chain.name,
-        });
-
-        // Convert Viem wallet client to ethers signer
-        const { account, chain } = walletClient;
-
-        // Create a provider from the transport
-        const network = {
-          chainId: chain.id,
-          name: chain.name,
-        };
-
-        // Create ethers provider from wallet client transport
-        const ethersProvider = new ethers.providers.Web3Provider(
-          walletClient.transport as unknown as ethers.providers.ExternalProvider,
-          network,
-        );
-
-        // Get signer from provider
-        // Don't specify address - let the wallet provider determine the signer
-        const ethersSigner = ethersProvider.getSigner();
-
-        // Verify signer works
-        const signerAddress = await ethersSigner.getAddress();
-        console.log('✅ Wagmi signer obtained and verified:', signerAddress);
-
-        setSigner(ethersSigner);
-        setProvider(ethersProvider);
-      } catch (error) {
-        console.error('❌ Failed to get Wagmi signer:', error);
-        if (error instanceof Error) {
-          console.error('Error details:', error.message);
-        }
-        setSigner(null);
-        setProvider(null);
-      }
-    }
-
-    getSignerFromWagmi();
-  }, [walletClient]);
-
-  return { signer, provider };
-}
 
 export function LaunchTab() {
   // Use Privy authentication system for wallet connection (required for contract deployment)

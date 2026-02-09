@@ -1,7 +1,8 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import type { QueryCtx, MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { mutation, query } from './_generated/server';
+import { internal } from './_generated/api';
+import { mutation, query, internalMutation } from './_generated/server';
 import { v } from 'convex/values';
 
 /**
@@ -66,5 +67,36 @@ export const seedAdmin = mutation({
       role: 'superadmin',
       createdAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Reset the Convex Auth password for an admin email.
+ * Use when you've forgotten the password and need to set a new one.
+ *
+ * Run from the Convex Dashboard (Dashboard → Functions → admin:resetAdminPassword → Run)
+ * with JSON args: { "email": "your@email.com", "newPassword": "your-new-password" }
+ *
+ * Password must be at least 8 characters. The account must already exist (user must have
+ * signed up once). After running, sign in at /admin/login with the same email and new password.
+ */
+export const resetAdminPassword = internalMutation({
+  args: {
+    email: v.string(),
+    newPassword: v.string(),
+  },
+  handler: async (ctx, { email, newPassword }) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+    await ctx.runMutation(internal.auth.store, {
+      args: {
+        type: 'modifyAccount',
+        provider: 'password',
+        account: { id: normalizedEmail, secret: newPassword },
+      },
+    });
+    return { success: true };
   },
 });

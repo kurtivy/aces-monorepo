@@ -9,6 +9,9 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { ConvexAuthNextjsServerProvider } from '@convex-dev/auth/nextjs/server';
 
+// Ensure auth cookies are read on every request (no static/cache for admin login flow)
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'ACES.fun',
   description: 'Trade Tokenized Collectibles',

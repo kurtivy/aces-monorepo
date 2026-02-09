@@ -17,14 +17,33 @@ export interface AdminUser {
   email: string;
 }
 
+function getConvexJwtCookieName(request: NextRequest): string {
+  const host = request.headers.get('host') ?? '';
+  const isLocalhost = /(localhost|127\.0\.0\.1)(:\d+)?/.test(host);
+  return (isLocalhost ? '' : '__Host-') + '__convexAuthJWT';
+}
+
+/**
+ * Get Convex admin JWT from request (Bearer, cookie, or nextjs token). Does not validate.
+ */
+export async function getConvexAdminToken(request: NextRequest): Promise<string | null> {
+  const bearer = request.headers.get('authorization');
+  const tokenFromHeaderRaw = bearer?.startsWith('Bearer ') ? bearer.slice(7).trim() : null;
+  const tokenFromHeader =
+    tokenFromHeaderRaw && tokenFromHeaderRaw.length > 0 ? tokenFromHeaderRaw : null;
+  const cookieName = getConvexJwtCookieName(request);
+  const tokenFromRequestCookie = request.cookies.get(cookieName)?.value ?? null;
+  const tokenFromNextjs = await convexAuthNextjsToken();
+  const token = tokenFromHeader ?? tokenFromRequestCookie ?? tokenFromNextjs ?? undefined;
+  return token && token.length > 0 ? token : null;
+}
+
 /**
  * Verify Convex Auth JWT and check admins table.
  * Returns admin with app user id for use in listings (ownerId). Convex = source of truth; sync to Prisma.
  */
 export async function requireAdminConvex(request: NextRequest): Promise<AdminUser> {
-  const bearer = request.headers.get('authorization');
-  const tokenFromHeader = bearer?.startsWith('Bearer ') ? bearer.slice(7).trim() : null;
-  const token = tokenFromHeader ?? (await convexAuthNextjsToken());
+  const token = await getConvexAdminToken(request);
   if (!token) {
     throw new Error('UNAUTHORIZED');
   }
