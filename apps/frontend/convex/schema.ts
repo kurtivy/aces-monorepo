@@ -78,5 +78,44 @@ export default defineSchema({
   })
     .index('by_contractAddress', ['contractAddress'])
     .index('by_chainId', ['chainId'])
-    .index('by_isActive', ['isActive']),
+    .index('by_isActive', ['isActive'])
+    .index('by_listingId', ['listingId']),
+
+  /**
+   * Listings: full listing data for RWA pages.
+   * Source of truth for listing metadata; canvasItems is a denormalized projection.
+   */
+  listings: defineTable({
+    // Stable id (cuid from Prisma)
+    id: v.string(),
+    title: v.string(),
+    symbol: v.string(),
+    brand: v.optional(v.string()),
+    story: v.optional(v.string()),
+    details: v.optional(v.string()),
+    provenance: v.optional(v.string()),
+    value: v.optional(v.string()),
+    reservePrice: v.optional(v.string()),
+    hypeSentence: v.optional(v.string()),
+    assetType: v.string(),
+    imageGallery: v.array(v.string()),
+    location: v.optional(v.string()),
+    assetDetails: v.optional(v.string()), // JSON serialized array of {key, value}
+    hypePoints: v.array(v.string()),
+    startingBidPrice: v.optional(v.string()),
+    isLive: v.boolean(),
+    launchDate: v.optional(v.string()),
+    ownerId: v.string(),
+    approvedBy: v.optional(v.string()),
+    submissionId: v.optional(v.string()),
+    showOnCanvas: v.boolean(),
+    isFeatured: v.boolean(),
+    showOnDrops: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_symbol', ['symbol'])
+    .index('by_stable_id', ['id'])
+    .index('by_ownerId', ['ownerId'])
+    .index('by_isLive', ['isLive']),
 });

@@ -30,9 +30,15 @@ export async function GET(_request: NextRequest) {
       },
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[prices/aces-usd] Failed to fetch cached ACES/USD price:', error);
+    // Surface safe, actionable error so deployment logs or API response can diagnose env/network issues
+    const safeMessage =
+      message.startsWith('[PriceCacheService]') || message.startsWith('Missing ')
+        ? message
+        : 'Failed to fetch price';
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch price' },
+      { success: false, error: safeMessage },
       { status: 500 },
     );
   }

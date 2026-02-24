@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminConvex } from '@/lib/auth/route-auth';
-import { prisma } from '@/lib/prisma';
 import { syncListingLiveToConvex } from '@/lib/convex-sync';
 import { z } from 'zod';
 
@@ -21,20 +20,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     console.log(`[ADMIN] Setting listing ${id} isLive to ${isLive}`);
 
-    // Verify listing exists
-    const existing = await prisma.listing.findUnique({
-      where: { id },
-      include: {
-        token: {
-          select: {
-            contractAddress: true,
-            symbol: true,
-          },
-        },
-      },
-    });
+    // Verify listing exists in Convex
+    const { fetchQuery } = await import('convex/nextjs');
+    const { api } = await import('../../../../../../../convex/_generated/api');
+    const existing = await fetchQuery(api.listings.getById, { id });
 
-    if (!existing) {
+    if (!existing || !existing.listing) {
       return NextResponse.json(
         {
           success: false,
@@ -45,40 +36,28 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    // Update isLive status
-    const listing = await prisma.listing.update({
-      where: { id },
-      data: {
-        isLive,
-        ...(isLive && !existing.launchDate ? { launchDate: new Date() } : {}),
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            walletAddress: true,
-            email: true,
-          },
-        },
-        token: {
-          select: {
-            contractAddress: true,
-            symbol: true,
-            name: true,
-          },
-        },
-      },
+    // Update isLive status in Convex
+    const { fetchMutation } = await import('convex/nextjs');
+    const { api: apiMutation } = await import('../../../../../../../convex/_generated/api');
+    await fetchMutation(apiMutation.listings.setLive, {
+      id,
+      isLive,
     });
 
-    // Sync isLive to Convex so canvas live badge stays in sync
-    await syncListingLiveToConvex(listing.id, listing.isLive);
+    // Sync isLive to canvasItems so canvas live badge stays in sync
+    await syncListingLiveToConvex(id, isLive);
 
-    console.log(`[ADMIN] Listing ${listing.id} isLive set to ${isLive}`);
+    // Fetch updated listing
+    const { fetchQuery: fetchQueryUpdated } = await import('convex/nextjs');
+    const { api: apiQuery } = await import('../../../../../../../convex/_generated/api');
+    const updated = await fetchQueryUpdated(apiQuery.listings.getById, { id });
+
+    console.log(`[ADMIN] Listing ${id} isLive set to ${isLive}`);
 
     return NextResponse.json({
       success: true,
-      message: `Listing "${listing.title}" ${isLive ? 'is now live' : 'is no longer live'}`,
-      data: listing,
+      message: `Listing "${updated?.listing.title}" ${isLive ? 'is now live' : 'is no longer live'}`,
+      data: updated?.listing,
     });
   } catch (error) {
     console.error('[ADMIN] Error toggling listing live status:', error);

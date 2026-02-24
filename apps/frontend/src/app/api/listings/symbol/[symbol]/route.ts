@@ -28,39 +28,12 @@ export async function GET(
       );
     }
 
-    // Fetch listing from database
-    const listing = await prisma.listing.findFirst({
-      where: {
-        symbol: {
-          equals: symbol,
-          mode: 'insensitive',
-        },
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            privyDid: true,
-            walletAddress: true,
-            email: true,
-          },
-        },
-        approvedByUser: {
-          select: {
-            id: true,
-            privyDid: true,
-          },
-        },
-        token: true,
-        _count: {
-          select: {
-            comments: true,
-          },
-        },
-      },
-    });
+    // Fetch listing from Convex (includes token and owner joins)
+    const { fetchQuery } = await import('convex/nextjs');
+    const { api } = await import('../../../../../../convex/_generated/api');
+    const result = await fetchQuery(api.listings.getBySymbol, { symbol });
 
-    if (!listing) {
+    if (!result || !result.listing) {
       return NextResponse.json(
         {
           success: false,
@@ -70,18 +43,42 @@ export async function GET(
       );
     }
 
-    // Get comment count
-    const commentCount = typeof listing._count?.comments === 'number' ? listing._count.comments : 0;
+    const { listing, token, owner, approvedByUser } = result;
+
+    // Comment count - for now return 0 (comments are in Prisma, can migrate later)
+    const commentCount = 0;
+
+    // Parse assetDetails from JSON string if present
+    let assetDetails = null;
+    if (listing.assetDetails) {
+      try {
+        assetDetails = JSON.parse(listing.assetDetails);
+      } catch (e) {
+        console.warn('[Listings] Failed to parse assetDetails JSON:', e);
+      }
+    }
 
     // Get holder count if token exists (optional - can be slow)
-    // For now, use null - holder count can be calculated separately if needed
-    // TODO: Implement TokenHolderService in frontend if needed
     let holderCount: number | null = null;
 
-    // Try to get from token if the field exists (may not be in schema)
-    if (listing.token) {
-      const tokenAny = listing.token as any;
-      holderCount = tokenAny.holderCount ?? tokenAny.holdersCount ?? null;
+    // Try to get from Prisma token if it exists (for holder count)
+    if (token?.contractAddress) {
+      try {
+        const prismaToken = await prisma.token.findUnique({
+          where: { contractAddress: token.contractAddress.toLowerCase() },
+          select: {
+            currentPrice: true,
+            currentPriceACES: true,
+            volume24h: true,
+            phase: true,
+            priceSource: true,
+            dexLiveAt: true,
+          },
+        });
+        // Holder count can be added later if needed
+      } catch (err) {
+        console.warn('[Listings] Failed to fetch Prisma token data:', err);
+      }
     }
 
     // Prepare response (similar to backend format)
@@ -89,44 +86,69 @@ export async function GET(
       id: listing.id,
       title: listing.title,
       symbol: listing.symbol,
-      brand: listing.brand,
-      story: listing.story,
-      details: listing.details,
-      provenance: listing.provenance,
-      value: listing.value,
-      reservePrice: listing.reservePrice,
-      hypeSentence: listing.hypeSentence,
+      brand: listing.brand ?? null,
+      story: listing.story ?? null,
+      details: listing.details ?? null,
+      provenance: listing.provenance ?? null,
+      value: listing.value ?? null,
+      reservePrice: listing.reservePrice ?? null,
+      hypeSentence: listing.hypeSentence ?? null,
       assetType: listing.assetType,
       imageGallery: listing.imageGallery,
-      location: listing.location,
+      location: listing.location ?? null,
       isLive: listing.isLive,
-      launchDate: listing.launchDate,
-      startingBidPrice: listing.startingBidPrice,
+      launchDate: listing.launchDate ?? null,
+      startingBidPrice: listing.startingBidPrice ?? null,
       hypePoints: listing.hypePoints,
-      assetDetails: listing.assetDetails,
+      assetDetails: assetDetails,
       ownerId: listing.ownerId,
-      approvedBy: listing.approvedBy,
-      createdAt: listing.createdAt,
-      updatedAt: listing.updatedAt,
-      owner: listing.owner,
-      approvedByUser: listing.approvedByUser,
-      commentCount: commentCount,
-      token: listing.token
+      approvedBy: listing.approvedBy ?? null,
+      createdAt: new Date(listing.createdAt).toISOString(),
+      updatedAt: new Date(listing.updatedAt).toISOString(),
+      owner: owner
         ? {
-            ...listing.token,
+            id: owner.id,
+            walletAddress: owner.walletAddress ?? null,
+            email: owner.email ?? null,
+            role: owner.role,
+          }
+        : undefined,
+      approvedByUser: approvedByUser
+        ? {
+            id: approvedByUser.id,
+            privyDid: approvedByUser.privyDid,
+          }
+        : undefined,
+      commentCount: commentCount,
+      token: token
+        ? {
+            id: token.contractAddress, // Use contractAddress as id
+            contractAddress: token.contractAddress,
+            symbol: token.symbol,
+            name: token.name,
+            decimals: token.decimals ?? 18,
+            currentPrice: '0', // Will be populated by token health if needed
+            currentPriceACES: '0',
+            volume24h: '0',
+            phase: 'DEX_TRADING' as const,
+            isActive: token.isActive,
+            chainId: token.chainId,
             holderCount: holderCount,
             holdersCount: holderCount,
+            priceSource: 'DEX' as const,
+            poolAddress: token.poolAddress ?? null,
+            dexLiveAt: null,
           }
         : undefined,
       // DEX metadata (if token exists and has pool)
-      dex: listing.token?.poolAddress
+      dex: token?.poolAddress
         ? {
-            poolAddress: listing.token.poolAddress,
-            isDexLive: listing.token.phase === 'DEX_TRADING',
-            dexLiveAt: listing.token.dexLiveAt,
-            priceSource: listing.token.priceSource || 'DEX',
-            lastUpdated: listing.token.updatedAt,
-            bondingCutoff: listing.token.dexLiveAt,
+            poolAddress: token.poolAddress,
+            isDexLive: true,
+            dexLiveAt: null,
+            priceSource: 'DEX' as const,
+            lastUpdated: null,
+            bondingCutoff: null,
           }
         : null,
     };
@@ -136,9 +158,9 @@ export async function GET(
       data: responseListing,
     };
 
-    if (includeHealth && listing.token?.contractAddress) {
+    if (includeHealth && token?.contractAddress) {
       try {
-        payload.health = await getTokenHealth(prisma, listing.token.contractAddress, 8453, 'usd');
+        payload.health = await getTokenHealth(prisma, token.contractAddress, 8453, 'usd');
       } catch (healthErr) {
         console.warn('[Listings] includeHealth failed:', healthErr);
       }

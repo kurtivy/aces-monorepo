@@ -50,6 +50,16 @@ export const getByPrivyDid = query({
 });
 
 /**
+ * List all app users (for admin panel).
+ */
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query('appUsers').collect();
+  },
+});
+
+/**
  * Get or create user by Privy DID. Updates wallet/email/username if provided and different.
  * Returns user doc so callers can sync to Prisma. New users get a new cuid for id.
  */

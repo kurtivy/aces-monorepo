@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { syncListingToConvex } from '@/lib/convex-sync';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const CreateListingSchema = z.object({
@@ -32,26 +30,28 @@ const CreateListingSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const listings = await prisma.listing.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        owner: {
-          select: {
-            id: true,
-            walletAddress: true,
-            email: true,
-          },
-        },
-        token: {
-          select: {
-            contractAddress: true,
-            symbol: true,
-            name: true,
-          },
-        },
-      },
-    });
+    const { fetchQuery } = await import('convex/nextjs');
+    const { api } = await import('../../../../../convex/_generated/api');
+    const enrichedListings = await fetchQuery(api.listings.list, { limit: 100 });
+
+    // Map to response format
+    const listings = enrichedListings.map((item) => ({
+      ...item.listing,
+      owner: item.owner
+        ? {
+            id: item.owner.id,
+            walletAddress: item.owner.walletAddress ?? null,
+            email: item.owner.email ?? null,
+          }
+        : null,
+      token: item.token
+        ? {
+            contractAddress: item.token.contractAddress,
+            symbol: item.token.symbol,
+            name: item.token.name,
+          }
+        : null,
+    }));
 
     return NextResponse.json({
       success: true,
@@ -81,10 +81,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`[ADMIN] Creating listing: ${data.title}`);
 
-    // If tokenId is provided, verify token exists
+    // If tokenId is provided, verify token exists in Convex
     if (data.tokenId) {
-      const token = await prisma.token.findUnique({
-        where: { contractAddress: data.tokenId.toLowerCase() },
+      const { fetchQuery } = await import('convex/nextjs');
+      const { api } = await import('../../../../../convex/_generated/api');
+      const token = await fetchQuery(api.tokens.getByContractAddress, {
+        contractAddress: data.tokenId.toLowerCase(),
       });
 
       if (!token) {
@@ -112,100 +114,98 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve owner: need a User id for ownerId (required). Use first ADMIN user when no auth.
-    const owner = await prisma.user.findFirst({
-      where: { role: 'ADMIN' },
-      orderBy: { createdAt: 'asc' },
-    });
+    const { fetchQuery: fetchQueryUsers } = await import('convex/nextjs');
+    const { api: apiUsers } = await import('../../../../../convex/_generated/api');
+    const allUsers = await fetchQueryUsers(apiUsers.users.list, {});
+    const owner = allUsers.find((u) => u.role === 'ADMIN');
+    
     if (!owner) {
       return NextResponse.json(
         {
           success: false,
           error: 'No admin user found',
-          message: 'Create a user with role ADMIN in the database to create listings without auth.',
+          message: 'Create a user with role ADMIN in Convex to create listings without auth.',
         },
         { status: 500 },
       );
     }
 
-    // Enforce "exactly one featured": if this listing is featured, clear others first
-    if (data.isFeatured) {
-      await prisma.listing.updateMany({
-        where: {},
-        data: { isFeatured: false },
-      });
-    }
+    // Generate a unique ID (cuid-like)
+    const listingId = `listing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create listing
-    const listing = await prisma.listing.create({
-      data: {
-        title: data.title,
-        symbol: data.symbol,
-        brand: data.brand || null,
-        story: data.story || null,
-        details: data.details || null,
-        provenance: data.provenance || null,
-        value: data.value || null,
-        reservePrice: data.reservePrice || null,
-        hypeSentence: data.hypeSentence || null,
-        assetType: data.assetType,
-        imageGallery: data.imageGallery,
-        location: data.location || null,
-        assetDetails: data.assetDetails
-          ? (data.assetDetails as unknown as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
-        hypePoints: data.hypePoints,
-        startingBidPrice: data.startingBidPrice || null,
-        launchDate: data.launchDate ? new Date(data.launchDate) : null,
-        isLive: false, // Always start as not live
-        submissionId: null, // No submission required
-        ownerId: owner.id,
-        approvedBy: owner.id,
-        showOnCanvas: data.showOnCanvas,
-        isFeatured: data.isFeatured,
-        showOnDrops: data.showOnDrops,
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            walletAddress: true,
-            email: true,
-          },
-        },
-      },
+    // Serialize assetDetails to JSON string if present
+    const assetDetailsJson = data.assetDetails ? JSON.stringify(data.assetDetails) : undefined;
+
+    // Create listing in Convex
+    const { fetchMutation } = await import('convex/nextjs');
+    const { api: apiMutation } = await import('../../../../../convex/_generated/api');
+    await fetchMutation(apiMutation.listings.insert, {
+      id: listingId,
+      title: data.title,
+      symbol: data.symbol,
+      brand: data.brand ?? undefined,
+      story: data.story ?? undefined,
+      details: data.details ?? undefined,
+      provenance: data.provenance ?? undefined,
+      value: data.value ?? undefined,
+      reservePrice: data.reservePrice ?? undefined,
+      hypeSentence: data.hypeSentence ?? undefined,
+      assetType: data.assetType,
+      imageGallery: data.imageGallery,
+      location: data.location ?? undefined,
+      assetDetails: assetDetailsJson,
+      hypePoints: data.hypePoints,
+      startingBidPrice: data.startingBidPrice ?? undefined,
+      isLive: false,
+      launchDate: data.launchDate ?? undefined,
+      ownerId: owner.id,
+      approvedBy: owner.id,
+      submissionId: undefined,
+      showOnCanvas: data.showOnCanvas,
+      isFeatured: data.isFeatured,
+      showOnDrops: data.showOnDrops,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
 
     // Link token if provided
     if (data.tokenId) {
-      await prisma.token.update({
-        where: { contractAddress: data.tokenId.toLowerCase() },
-        data: { listingId: listing.id },
+      // Update token in Convex to link to this listing
+      const { fetchMutation: fetchMutationToken } = await import('convex/nextjs');
+      const { api: apiToken } = await import('../../../../../convex/_generated/api');
+      await fetchMutationToken(apiToken.tokens.insertToken, {
+        contractAddress: data.tokenId.toLowerCase(),
+        symbol: '', // Will be updated by the token data
+        name: '',
+        chainId: 8453,
+        isActive: true,
+        listingId: listingId,
       });
     }
 
-    // Sync to Convex when showOnCanvas so it appears on the infinite canvas
-    if (listing.showOnCanvas) {
+    // Sync to canvasItems if showOnCanvas
+    if (data.showOnCanvas) {
       await syncListingToConvex({
-        id: listing.id,
-        title: listing.title,
-        symbol: listing.symbol,
-        story: listing.story ?? null,
-        details: listing.details ?? null,
-        hypeSentence: listing.hypeSentence ?? null,
-        imageGallery: listing.imageGallery,
-        showOnCanvas: listing.showOnCanvas,
-        isFeatured: listing.isFeatured,
-        isLive: listing.isLive,
-        showOnDrops: listing.showOnDrops,
+        id: listingId,
+        title: data.title,
+        symbol: data.symbol,
+        story: data.story ?? null,
+        details: data.details ?? null,
+        hypeSentence: data.hypeSentence ?? null,
+        imageGallery: data.imageGallery,
+        showOnCanvas: data.showOnCanvas,
+        isFeatured: data.isFeatured,
+        isLive: false,
+        showOnDrops: data.showOnDrops,
       });
     }
 
-    console.log(`[ADMIN] Listing created successfully: ${listing.id}`);
+    console.log(`[ADMIN] Listing created successfully: ${listingId}`);
 
     return NextResponse.json({
       success: true,
-      message: `Listing "${listing.title}" created successfully`,
-      data: listing,
+      message: `Listing "${data.title}" created successfully`,
+      data: { id: listingId, ...data },
     });
   } catch (error) {
     console.error('[ADMIN] Error creating listing:', error);

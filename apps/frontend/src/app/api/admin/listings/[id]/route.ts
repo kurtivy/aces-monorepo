@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminConvex } from '@/lib/auth/route-auth';
-import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const UpdateListingSchema = z.object({
@@ -37,12 +35,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     console.log(`[ADMIN] Updating listing: ${id}`);
 
-    // Verify listing exists
-    const existing = await prisma.listing.findUnique({
-      where: { id },
-    });
+    // Verify listing exists in Convex
+    const { fetchQuery } = await import('convex/nextjs');
+    const { api } = await import('../../../../../../convex/_generated/api');
+    const existing = await fetchQuery(api.listings.getById, { id });
 
-    if (!existing) {
+    if (!existing || !existing.listing) {
       return NextResponse.json(
         {
           success: false,
@@ -53,51 +51,46 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    // Update listing
-    // Handle assetDetails JSON field properly - Prisma JSON fields need special handling
-    const { assetDetails, ...restData } = data;
-    const updateData: Prisma.ListingUpdateInput = {
-      ...restData,
-      updatedAt: new Date(),
-    };
+    // Serialize assetDetails to JSON string if present
+    const assetDetailsJson = data.assetDetails ? JSON.stringify(data.assetDetails) : undefined;
 
-    // Handle assetDetails JSON field - Prisma requires explicit JSON handling
-    if (assetDetails !== undefined) {
-      if (assetDetails === null) {
-        updateData.assetDetails = Prisma.JsonNull;
-      } else {
-        // Cast to InputJsonValue - Prisma accepts any JSON-serializable value
-        updateData.assetDetails = assetDetails as unknown as Prisma.InputJsonValue;
-      }
-    }
+    // Build patch object
+    const patch: any = {};
+    if (data.title !== undefined) patch.title = data.title;
+    if (data.symbol !== undefined) patch.symbol = data.symbol;
+    if (data.brand !== undefined) patch.brand = data.brand ?? undefined;
+    if (data.story !== undefined) patch.story = data.story ?? undefined;
+    if (data.details !== undefined) patch.details = data.details ?? undefined;
+    if (data.provenance !== undefined) patch.provenance = data.provenance ?? undefined;
+    if (data.value !== undefined) patch.value = data.value ?? undefined;
+    if (data.reservePrice !== undefined) patch.reservePrice = data.reservePrice ?? undefined;
+    if (data.hypeSentence !== undefined) patch.hypeSentence = data.hypeSentence ?? undefined;
+    if (data.assetType !== undefined) patch.assetType = data.assetType;
+    if (data.imageGallery !== undefined) patch.imageGallery = data.imageGallery;
+    if (data.location !== undefined) patch.location = data.location ?? undefined;
+    if (assetDetailsJson !== undefined) patch.assetDetails = assetDetailsJson;
+    if (data.hypePoints !== undefined) patch.hypePoints = data.hypePoints;
+    if (data.startingBidPrice !== undefined) patch.startingBidPrice = data.startingBidPrice ?? undefined;
 
-    const listing = await prisma.listing.update({
-      where: { id },
-      data: updateData,
-      include: {
-        owner: {
-          select: {
-            id: true,
-            walletAddress: true,
-            email: true,
-          },
-        },
-        token: {
-          select: {
-            contractAddress: true,
-            symbol: true,
-            name: true,
-          },
-        },
-      },
+    // Update listing in Convex
+    const { fetchMutation } = await import('convex/nextjs');
+    const { api: apiMutation } = await import('../../../../../../convex/_generated/api');
+    await fetchMutation(apiMutation.listings.update, {
+      id,
+      patch,
     });
 
-    console.log(`[ADMIN] Listing updated successfully: ${listing.id}`);
+    // Fetch updated listing to return
+    const { fetchQuery: fetchQueryUpdated } = await import('convex/nextjs');
+    const { api: apiQuery } = await import('../../../../../../convex/_generated/api');
+    const updated = await fetchQueryUpdated(apiQuery.listings.getById, { id });
+
+    console.log(`[ADMIN] Listing updated successfully: ${id}`);
 
     return NextResponse.json({
       success: true,
-      message: `Listing "${listing.title}" updated successfully`,
-      data: listing,
+      message: `Listing "${updated?.listing.title}" updated successfully`,
+      data: updated?.listing,
     });
   } catch (error) {
     console.error('[ADMIN] Error updating listing:', error);
