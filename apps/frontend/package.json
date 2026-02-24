@@ -24,8 +24,7 @@
     "dev:both": "concurrently \"npm run dev\" \"npm run dev:3001\"",
     "dev:production-test": "next dev -H 0.0.0.0",
     "postinstall": "npx prisma generate --schema=./prisma/schema.prisma",
-    "build": "node scripts/build-with-convex.js",
-    "build:next": "npx prisma generate --schema=./prisma/schema.prisma && next build",
+    "build": "npx prisma generate --schema=./prisma/schema.prisma && next build",
     "start": "next start",
     "lint": "next lint"
   },
