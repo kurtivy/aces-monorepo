@@ -60,6 +60,7 @@
   },
   "dependencies": {
     "@prisma/client": "5.10.2",
+    "convex": "^1.31.7",
     "dotenv": "^17.2.1",
     "ethers": "^6.15.0",
     "prisma": "5.10.2"
