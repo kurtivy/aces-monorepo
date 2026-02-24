@@ -175,16 +175,10 @@ interface TokenHealthPanelProps {
   chainId?: number;
   marketCap?: number; // Market cap in USD (passed from parent)
   marketCapLoading?: boolean;
-  dexMeta?: {
-    poolAddress: string | null;
-    isDexLive: boolean;
-    dexLiveAt: string | null;
-  } | null;
   liveTokenPrice?: number; // Live token price in USD from chart datafeed
   volume24hAces?: string; // 24h volume in ACES from API
   volume24hUsd?: number; // 24h volume in USD (preferred when available)
   liquidityUsd?: number | null;
-  liquiditySource?: 'bonding_curve' | 'dex' | null;
   metricsLoading?: boolean;
   circulatingSupply?: number | null; // Circulating supply from unified health endpoint
   rewardSupply?: number | null; // Actual circulating for reward calculations (excludes LP tokens)
@@ -202,12 +196,10 @@ export default function TokenHealthPanel({
   chainId: _chainId,
   marketCap: marketCapProp,
   marketCapLoading = false,
-  dexMeta,
   liveTokenPrice,
   volume24hAces: _volume24hAces,
   volume24hUsd: volume24hUsdProp,
   liquidityUsd: liquidityUsdProp,
-  liquiditySource: _liquiditySource,
   metricsLoading = false,
   circulatingSupply: circulatingSupplyProp,
   rewardSupply: rewardSupplyProp,
@@ -219,11 +211,6 @@ export default function TokenHealthPanel({
   // Use the same provider/signer as swap box to avoid MetaMask conflicts
   const { provider } = useSwapContracts(walletAddress, isAuthenticated, tokenAddress);
 
-  // Determine if token is in DEX mode
-  const isDexMode = useMemo(() => {
-    return Boolean(dexMeta?.isDexLive);
-  }, [dexMeta]);
-
   // Parse asset sale price (reserve price)
   const assetSalePrice = useMemo(() => {
     if (!reservePrice) return 0;
@@ -234,14 +221,8 @@ export default function TokenHealthPanel({
   // Use the pre-calculated community reward from parent (16.67% of listing value)
   const communityReward = communityRewardProp ?? 20_000;
 
-  // Constants for market cap supply (fixed values)
-  const BONDING_SUPPLY = 700_000_000; // 700M during bonding curve
-  const DEX_SUPPLY = 1_000_000_000; // 1B after DEX graduation
-
-  // Market cap supply: Fixed 700M (bonding) or 1B (DEX)
-  const marketCapSupply = useMemo(() => {
-    return isDexMode ? DEX_SUPPLY : BONDING_SUPPLY;
-  }, [isDexMode]);
+  // All tokens are DEX mode - use 1B supply
+  const marketCapSupply = 1_000_000_000;
 
   // Circulating supply: Actual tokens sold (used for market cap fallback calculations)
   // This varies from 1 to 700M during bonding, then up to 1B in DEX mode
@@ -541,7 +522,7 @@ export default function TokenHealthPanel({
       >
         <LabelWithTooltip
           label="LIQUIDITY"
-          tooltip="During bonding this is the ACES deposited into the curve (converted to USD). After launch it reflects Aerodrome pool liquidity."
+          tooltip="Total liquidity in the Aerodrome DEX pool."
         />
         {liquidityState.status === 'loading' ? (
           <LoadingDots className={valueClass} />

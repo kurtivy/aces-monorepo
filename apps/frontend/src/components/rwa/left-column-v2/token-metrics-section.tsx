@@ -12,17 +12,11 @@ interface TokenMetricsSectionProps {
   hypePoints?: string[] | null;
   hypeSentence?: string | null;
   marketCap?: number;
-  dexMeta?: {
-    poolAddress: string | null;
-    isDexLive: boolean;
-    dexLiveAt: string | null;
-  } | null;
   liveTokenPrice?: number;
   marketCapLoading?: boolean;
   volume24hAces?: string;
   volume24hUsd?: number | null;
   liquidityUsd?: number | null;
-  liquiditySource?: 'bonding_curve' | 'dex' | null;
   metricsLoading?: boolean;
   circulatingSupply?: number | null;
   rewardSupply?: number | null;
@@ -45,13 +39,11 @@ export function TokenMetricsSection({
   hypePoints,
   hypeSentence,
   marketCap,
-  dexMeta,
   liveTokenPrice,
   marketCapLoading,
   volume24hAces,
   volume24hUsd,
   liquidityUsd,
-  liquiditySource,
   metricsLoading,
   circulatingSupply,
   rewardSupply,
@@ -87,7 +79,6 @@ export function TokenMetricsSection({
   const resolvedVolume24hAces = volume24hAces ?? hookMetrics?.volume24hAces ?? '0';
   const resolvedVolume24hUsd = volume24hUsd ?? hookMetrics?.volume24hUsd ?? undefined;
   const resolvedLiquidityUsd = liquidityUsd ?? hookMetrics?.liquidityUsd ?? undefined;
-  const resolvedLiquiditySource = liquiditySource ?? hookMetrics?.liquiditySource ?? null;
   const resolvedMetricsLoading = metricsLoading ?? hookLoading;
   const resolvedCirculatingSupply = circulatingSupply ?? hookCirculatingSupply ?? null;
   const resolvedRewardSupply = rewardSupply ?? hookRewardSupply ?? null;
@@ -117,12 +108,10 @@ export function TokenMetricsSection({
           chainId={chainId}
           marketCap={marketCap}
           marketCapLoading={marketCapLoading}
-          dexMeta={dexMeta}
           liveTokenPrice={liveTokenPrice}
           volume24hAces={resolvedVolume24hAces}
           volume24hUsd={resolvedVolume24hUsd ?? undefined}
           liquidityUsd={resolvedLiquidityUsd ?? undefined}
-          liquiditySource={resolvedLiquiditySource}
           metricsLoading={resolvedMetricsLoading}
           circulatingSupply={resolvedCirculatingSupply}
           rewardSupply={resolvedRewardSupply}

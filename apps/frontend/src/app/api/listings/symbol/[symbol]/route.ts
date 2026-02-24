@@ -140,10 +140,10 @@ export async function GET(
             dexLiveAt: null,
           }
         : undefined,
-      // DEX metadata (if token exists and has pool)
-      dex: token?.poolAddress
+      // DEX metadata - all tokens are DEX mode now
+      dex: token
         ? {
-            poolAddress: token.poolAddress,
+            poolAddress: token.poolAddress ?? null,
             isDexLive: true,
             dexLiveAt: null,
             priceSource: 'DEX' as const,

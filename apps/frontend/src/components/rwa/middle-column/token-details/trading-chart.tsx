@@ -10,7 +10,7 @@ interface TradingChartProps {
   imageSrc?: string;
   heightClass?: string;
   chainId?: number;
-  dexMeta?: DatabaseListing['dex'] | null;
+  poolAddress?: string | null;
   images?: ImageData[];
   selectedImageIndex?: number;
   onImageSelect?: Dispatch<SetStateAction<number>>;
@@ -23,12 +23,12 @@ const TradingChart: React.FC<TradingChartProps> = ({
   imageSrc = '/canvas-images/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
   heightClass = 'h-[600px] min-h-[400px]',
   chainId,
-  dexMeta,
+  poolAddress: poolAddressProp,
   images,
   selectedImageIndex,
   onImageSelect,
 }) => {
-  const poolAddress = dexMeta?.poolAddress || tokenAddress;
+  const poolAddress = poolAddressProp || tokenAddress;
 
   return (
     <div className="space-y-4">

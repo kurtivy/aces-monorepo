@@ -126,7 +126,7 @@ export function MiddleContentArea({
                         tokenAddress={chartAddress}
                         tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
                         title={listing?.token?.name || listing?.title || 'Trading Chart'}
-                        dexMeta={listing?.dex ?? null}
+                        poolAddress={listing?.dex?.poolAddress ?? null}
                         images={displayImages}
                         selectedImageIndex={selectedImageIndex}
                         onImageSelect={setSelectedImageIndex}
@@ -134,7 +134,7 @@ export function MiddleContentArea({
                       <TradeHistory
                         tokenAddress={chartAddress}
                         tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
-                        dexMeta={listing?.dex ?? null}
+                        poolAddress={listing?.dex?.poolAddress ?? null}
                       />
                     </>
                   );

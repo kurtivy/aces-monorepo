@@ -101,7 +101,6 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 hypePoints={listing.hypePoints}
                 hypeSentence={listing.hypeSentence}
                 marketCap={marketCapUsd}
-                dexMeta={listing.dex || null}
                 liveTokenPrice={liveTokenPrice}
               />
             </div>

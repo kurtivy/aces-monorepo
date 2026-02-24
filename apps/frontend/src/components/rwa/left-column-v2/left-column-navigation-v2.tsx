@@ -9,7 +9,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTokenMetrics } from '@/hooks/use-token-metrics';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
-import { BondingProgressSection } from '@/components/rwa/right-panel/bonding-progression-section';
 
 interface LeftColumnNavigationV2Props {
   listing?: DatabaseListing | null;
@@ -30,7 +29,6 @@ export function LeftColumnNavigationV2({
   const {
     metrics,
     currentPriceUsd,
-    bondingData,
     circulatingSupply,
     rewardSupply,
     marketCapUsd,
@@ -169,27 +167,15 @@ export function LeftColumnNavigationV2({
             hypePoints={listing.hypePoints}
             hypeSentence={listing.hypeSentence}
             marketCap={marketCapUSD}
-            dexMeta={listing.dex || null}
             liveTokenPrice={liveTokenPrice}
             marketCapLoading={marketCapLoading}
             volume24hAces={metrics?.volume24hAces}
             volume24hUsd={metrics?.volume24hUsd ?? null}
             liquidityUsd={metrics?.liquidityUsd ?? null}
-            liquiditySource={metrics?.liquiditySource ?? null}
             metricsLoading={metricsLoading}
             circulatingSupply={circulatingSupply}
             rewardSupply={rewardSupply}
             disableMetricsFetch
-          />
-        </div>
-
-        {/* Bonding Curve Progress */}
-        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] px-5 py-1.5">
-          <BondingProgressSection
-            tokenAddress={listing?.token?.contractAddress}
-            chainId={listing?.token?.chainId}
-            tokenSymbol={tokenSymbol}
-            bondingDataFromParent={bondingData}
           />
         </div>
       </div>

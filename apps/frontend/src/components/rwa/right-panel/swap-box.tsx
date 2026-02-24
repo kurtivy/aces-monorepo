@@ -58,7 +58,6 @@ interface TokenSwapInterfaceProps {
   imageGallery?: string[];
   primaryImage?: string;
   chainId?: number;
-  dexMeta?: DatabaseListing['dex'] | null;
   tokenDecimals?: number;
   currentAmount?: number;
   targetAmount?: number;
@@ -79,7 +78,6 @@ export default function TokenSwapInterface({
   imageGallery,
   primaryImage,
   chainId = 8453,
-  dexMeta = null,
   tokenDecimals = 18,
   transactionStatus: externalTransactionStatus,
   onTransactionStatusChange,

@@ -39,7 +39,6 @@ export default function RightPanel({
   const tokenName = listing.token?.name || listing.title;
   const chainId = listing.token?.chainId;
   const images = listing.imageGallery ?? [];
-  const dexMeta = listing.dex ?? null;
 
   // Transform image gallery URLs into ImageData format
   const displayImages =
@@ -111,7 +110,6 @@ export default function RightPanel({
           primaryImage={images?.[0] ?? undefined}
           imageGallery={images}
           chainId={chainId}
-          dexMeta={dexMeta}
           // Hide internal headers/progression inside the swap component
           showProgression={false}
           showHeader={false}

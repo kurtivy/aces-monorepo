@@ -89,7 +89,7 @@ export function MiddleContentAreaV2({
           tokenSymbol={tokenSymbol}
           title={listing.title}
           chainId={listing.token?.chainId}
-          dexMeta={listing.dex}
+          poolAddress={listing.dex?.poolAddress ?? null}
           images={images}
           selectedImageIndex={selectedImageIndex}
           onImageSelect={onImageSelect}

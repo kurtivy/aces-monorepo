@@ -16,7 +16,7 @@ interface TradingSectionProps {
   tokenSymbol?: string;
   title?: string;
   chainId?: number;
-  dexMeta?: DatabaseListing['dex'] | null;
+  poolAddress?: string | null;
   images?: ImageData[];
   selectedImageIndex?: number;
   onImageSelect?: Dispatch<SetStateAction<number>>;
@@ -25,10 +25,10 @@ interface TradingSectionProps {
 export function TradingSection({
   tokenAddress,
   tokenSymbol,
-  dexMeta,
+  poolAddress: poolAddressProp,
 }: TradingSectionProps) {
   const resolvedTokenSymbol = tokenSymbol || 'RWA';
-  const poolAddress = dexMeta?.poolAddress || tokenAddress;
+  const poolAddress = poolAddressProp || tokenAddress;
 
   return (
     <div className="flex flex-col flex-1">

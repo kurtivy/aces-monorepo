@@ -7,7 +7,7 @@ import type { DatabaseListing } from '@/types/rwa/section.types';
 interface TradeHistoryProps {
   tokenAddress: string;
   tokenSymbol?: string;
-  dexMeta?: DatabaseListing['dex'] | null;
+  poolAddress?: string | null;
   className?: string;
   contentClassName?: string;
   style?: CSSProperties;
@@ -17,7 +17,7 @@ interface TradeHistoryProps {
 
 export default function TradeHistory({
   tokenSymbol = 'TOKEN',
-  dexMeta,
+  poolAddress,
   className,
   contentClassName,
   style,
@@ -25,8 +25,6 @@ export default function TradeHistory({
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadTimeoutRef = useRef<number | null>(null);
-
-  const poolAddress = dexMeta?.poolAddress;
 
   useEffect(() => {
     if (!poolAddress) return;

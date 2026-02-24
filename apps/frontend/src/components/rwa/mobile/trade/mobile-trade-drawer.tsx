@@ -132,7 +132,6 @@ export default function MobileTradeDrawer({ isOpen, onClose, listing }: MobileTr
                   primaryImage={listing.imageGallery?.[0]}
                   imageGallery={listing.imageGallery}
                   chainId={tokenChainId}
-                  dexMeta={listing.dex ?? null}
                   showProgression={false}
                   showHeader={false}
                   showFrame

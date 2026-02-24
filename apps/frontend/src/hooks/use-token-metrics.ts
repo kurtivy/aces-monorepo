@@ -392,6 +392,7 @@ export function useTokenMetrics(
     restFetchedRef.current = true;
   }, []);
 
+  // Effect 1: Reset state when token changes
   useEffect(() => {
     setMetrics(null);
     metricsRef.current = null;
@@ -418,7 +419,23 @@ export function useTokenMetrics(
 
     fetchMetrics();
     // initialHealth intentionally omitted: used only for initial seed so we don't overwrite later WS/poll updates
-  }, [tokenAddress, refreshIntervalMs, fetchMetrics, wsConnected, applyHealthToState]);
+  }, [tokenAddress, applyHealthToState, fetchMetrics]);
+
+  // Effect 2: Loading timeout failsafe (15 seconds)
+  // If data doesn't arrive within 15s, stop showing loading state
+  useEffect(() => {
+    if (!loading || !tokenAddress) return;
+
+    const timeout = setTimeout(() => {
+      // If still loading after 15s, something is wrong - stop loading
+      setLoading(false);
+      if (!metrics && !error) {
+        setError('Data unavailable - please refresh');
+      }
+    }, 15000);
+
+    return () => clearTimeout(timeout);
+  }, [loading, tokenAddress, metrics, error]);
 
   // 🔥 REMOVED: Chart event subscription
   // Previously subscribed to subscribeToMarketCapUpdates which caused fluctuation

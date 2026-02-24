@@ -191,12 +191,10 @@ export function ActiveSectionContent({
           tokenAddress={listing?.token?.contractAddress}
           reservePrice={listing?.reservePrice}
           chainId={tokenChainId}
-          dexMeta={listing?.dex || null}
           liveTokenPrice={liveTokenPrice}
           volume24hAces={volume24hAces}
           volume24hUsd={volume24hUsd}
           liquidityUsd={liquidityUsd}
-          liquiditySource={liquiditySource}
           metricsLoading={tokenMetricsLoading}
           circulatingSupply={circulatingSupply}
           rewardSupply={rewardSupply}
