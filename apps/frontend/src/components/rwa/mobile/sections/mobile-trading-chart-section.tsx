@@ -111,41 +111,47 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
     const poolAddress = listing.dex?.poolAddress;
     const tokenSymbol = listing.token?.symbol ?? listing.symbol;
 
-    return (
-      <section
-        ref={setSectionRef}
-        data-section-id="chart"
-        className="w-full bg-[#151c16] border-t border-[#D0B284]/20"
-      >
-        <div className="overflow-hidden border border-[#D0B284]/15 rounded-b-lg">
-          <MobileMarketCapHeader tokenAddress={listing.token?.contractAddress ?? null} />
-          
-          {/* DexScreener iframe with chart + transactions */}
-          {hasDexPool && poolAddress ? (
-            <div className="w-full" style={{ height: '500px', minHeight: '400px' }}>
-              <DexScreenerChart
-                poolAddress={poolAddress}
+    // Use pool address for DEX tokens, otherwise use token contract address
+    const chartAddress =
+      listing.dex?.priceSource === 'DEX' && listing.dex?.poolAddress
+        ? listing.dex.poolAddress
+        : listing.token?.contractAddress ?? '';
+
+  return (
+    <section
+      ref={setSectionRef}
+      data-section-id="chart"
+      className="w-full bg-[#151c16] border-t border-[#D0B284]/20"
+    >
+      <div className="overflow-hidden border border-[#D0B284]/15 rounded-b-lg">
+        <MobileMarketCapHeader tokenAddress={listing.token?.contractAddress ?? null} />
+        
+        {/* DexScreener iframe with chart + transactions */}
+        {hasDexPool && poolAddress ? (
+          <div className="w-full" style={{ height: '500px', minHeight: '400px' }}>
+            <DexScreenerChart
+              poolAddress={poolAddress}
+              tokenSymbol={tokenSymbol}
+              heightPx={500}
+              minHeightPx={400}
+              showTransactions={true}
+              showTokenInfo={false}
+            />
+          </div>
+        ) : (
+          /* Fallback to TradingView Chart if no DEX pool */
+          <div className="w-full" style={{ height: '420px', minHeight: '360px' }}>
+            {shouldLoadChart ? (
+              <TradingViewChart
+                tokenAddress={chartAddress}
                 tokenSymbol={tokenSymbol}
-                heightPx={500}
-                minHeightPx={400}
-                showTransactions={true}
-                showTokenInfo={false}
+                tokenName={listing.token?.name ?? listing.title}
+                heightPx={420}
+                minHeightPx={360}
+                hideNativeHeader
+                extraEnabledFeatures={mobileEnabledFeatures}
+                dexMeta={listing.dex ?? null}
               />
-            </div>
-          ) : (
-            /* Fallback to TradingView Chart if no DEX pool */
-            <div className="w-full" style={{ height: '420px', minHeight: '360px' }}>
-              {shouldLoadChart ? (
-                <TradingViewChart
-                  tokenAddress={listing.token?.contractAddress ?? ''}
-                  tokenSymbol={tokenSymbol}
-                  tokenName={listing.token?.name ?? listing.title}
-                  heightPx={420}
-                  minHeightPx={360}
-                  hideNativeHeader
-                  extraEnabledFeatures={mobileEnabledFeatures}
-                  dexMeta={listing.dex ?? null}
-                />
               ) : (
                 <div className="w-full h-full bg-black flex flex-col items-center justify-center gap-4">
                   <div className="flex flex-col items-center gap-3">

@@ -68,6 +68,12 @@ export function MiddleContentAreaV2({
   const isOwner = user?.id === listing.ownerId;
   const tokenSymbol = listing.token?.symbol || listing.symbol || 'RWA';
 
+  // Use pool address for DEX tokens, otherwise use token contract address
+  const chartAddress =
+    listing.dex?.priceSource === 'DEX' && listing.dex?.poolAddress
+      ? listing.dex.poolAddress
+      : listing.token?.contractAddress || '';
+
   return (
     <div className="relative h-full">
       {/* Main Trading View */}
@@ -79,7 +85,7 @@ export function MiddleContentAreaV2({
         />
 
         <TradingSection
-          tokenAddress={listing.token?.contractAddress || ''}
+          tokenAddress={chartAddress}
           tokenSymbol={tokenSymbol}
           title={listing.title}
           chainId={listing.token?.chainId}

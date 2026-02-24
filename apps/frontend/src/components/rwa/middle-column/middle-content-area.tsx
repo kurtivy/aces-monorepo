@@ -114,20 +114,31 @@ export function MiddleContentArea({
           <div key="token-details-main" className="space-y-0">
             {listing?.token?.contractAddress ? (
               <>
-                <TradingChart
-                  tokenAddress={listing.token.contractAddress}
-                  tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
-                  title={listing?.token?.name || listing?.title || 'Trading Chart'}
-                  dexMeta={listing?.dex ?? null}
-                  images={displayImages}
-                  selectedImageIndex={selectedImageIndex}
-                  onImageSelect={setSelectedImageIndex}
-                />
-                <TradeHistory
-                  tokenAddress={listing.token.contractAddress}
-                  tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
-                  dexMeta={listing?.dex ?? null}
-                />
+                {(() => {
+                  // Use pool address for DEX tokens, otherwise use token contract address
+                  const chartAddress =
+                    listing.dex?.priceSource === 'DEX' && listing.dex?.poolAddress
+                      ? listing.dex.poolAddress
+                      : listing.token.contractAddress;
+                  return (
+                    <>
+                      <TradingChart
+                        tokenAddress={chartAddress}
+                        tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
+                        title={listing?.token?.name || listing?.title || 'Trading Chart'}
+                        dexMeta={listing?.dex ?? null}
+                        images={displayImages}
+                        selectedImageIndex={selectedImageIndex}
+                        onImageSelect={setSelectedImageIndex}
+                      />
+                      <TradeHistory
+                        tokenAddress={chartAddress}
+                        tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
+                        dexMeta={listing?.dex ?? null}
+                      />
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <div className="p-8 bg-black rounded-lg border border-[#D0B284]/20 text-center">
