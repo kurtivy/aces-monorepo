@@ -321,8 +321,6 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         // Token data and chart data endpoints
         "/api/v1/dex",
         // DEX quote/pool endpoints
-        "/api/v1/twitch",
-        // Twitch stream endpoints
         "/api/v1/cron/trigger",
         // Cron trigger endpoint for manual testing
         "/api/v1/cron/status",

@@ -340,8 +340,6 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         // Token data and chart data endpoints
         "/api/v1/dex",
         // DEX quote/pool endpoints
-        "/api/v1/twitch",
-        // Twitch stream endpoints
         "/api/v1/cron/trigger",
         // Cron trigger endpoint for manual testing
         "/api/v1/cron/status",
@@ -8796,136 +8794,6 @@ async function portfolioRoutes(fastify) {
 }
 __name(portfolioRoutes, "portfolioRoutes");
 
-// src/routes/v1/twitch.ts
-var import_zod11 = require("zod");
-var import_zod_to_json_schema10 = require("zod-to-json-schema");
-async function twitchRoutes(fastify) {
-  fastify.get(
-    "/stream-status/:channelName",
-    {
-      schema: {
-        params: (0, import_zod_to_json_schema10.zodToJsonSchema)(
-          import_zod11.z.object({
-            channelName: import_zod11.z.string().min(1).max(50)
-          })
-        ),
-        response: {
-          200: (0, import_zod_to_json_schema10.zodToJsonSchema)(
-            import_zod11.z.object({
-              success: import_zod11.z.boolean(),
-              data: import_zod11.z.object({
-                isLive: import_zod11.z.boolean(),
-                streamData: import_zod11.z.record(import_zod11.z.unknown()).nullable()
-              })
-            })
-          )
-        }
-      }
-    },
-    async (request, reply) => {
-      try {
-        const { channelName } = request.params;
-        if (!process.env.TWITCH_CLIENT_ID || !process.env.TWITCH_CLIENT_SECRET) {
-          fastify.log.error("Twitch API credentials not configured");
-          return reply.code(500).send({
-            success: false,
-            error: "Twitch API not configured"
-          });
-        }
-        const tokenResponse = await fetch("https://id.twitch.tv/oauth2/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id: process.env.TWITCH_CLIENT_ID,
-            client_secret: process.env.TWITCH_CLIENT_SECRET,
-            grant_type: "client_credentials"
-          })
-        });
-        if (!tokenResponse.ok) {
-          fastify.log.error("Failed to get Twitch OAuth token");
-          return reply.code(500).send({
-            success: false,
-            error: "Failed to authenticate with Twitch API"
-          });
-        }
-        const tokenData = await tokenResponse.json();
-        const streamResponse = await fetch(
-          `https://api.twitch.tv/helix/streams?user_login=${channelName}`,
-          {
-            headers: {
-              "Client-ID": process.env.TWITCH_CLIENT_ID,
-              Authorization: `Bearer ${tokenData.access_token}`
-            }
-          }
-        );
-        if (!streamResponse.ok) {
-          fastify.log.error("Failed to fetch stream data from Twitch");
-          return reply.code(500).send({
-            success: false,
-            error: "Failed to fetch stream data"
-          });
-        }
-        const streamData = await streamResponse.json();
-        return reply.send({
-          success: true,
-          data: {
-            isLive: streamData.data.length > 0,
-            streamData: streamData.data[0] || null
-          }
-        });
-      } catch (error) {
-        fastify.log.error({ error }, "Twitch stream status error");
-        return reply.code(500).send({
-          success: false,
-          error: "Failed to check stream status"
-        });
-      }
-    }
-  );
-  fastify.post(
-    "/analytics",
-    {
-      schema: {
-        body: (0, import_zod_to_json_schema10.zodToJsonSchema)(
-          import_zod11.z.object({
-            action: import_zod11.z.string(),
-            windowState: import_zod11.z.record(import_zod11.z.unknown()).optional(),
-            timestamp: import_zod11.z.string()
-          })
-        ),
-        response: {
-          200: (0, import_zod_to_json_schema10.zodToJsonSchema)(
-            import_zod11.z.object({
-              success: import_zod11.z.boolean()
-            })
-          )
-        }
-      }
-    },
-    async (request, reply) => {
-      try {
-        const { action, windowState, timestamp } = request.body;
-        fastify.log.info(
-          {
-            action,
-            windowState,
-            timestamp
-          },
-          "Twitch Stream Analytics"
-        );
-        return reply.send({ success: true });
-      } catch (error) {
-        fastify.log.error({ error }, "Twitch analytics error");
-        return reply.code(500).send({
-          success: false,
-          error: "Failed to track analytics"
-        });
-      }
-    }
-  );
-}
-__name(twitchRoutes, "twitchRoutes");
-
 // src/services/price-service.ts
 var import_ethers4 = require("ethers");
 var ERC20_ABI2 = ["function decimals() view returns (uint8)"];
@@ -11356,7 +11224,6 @@ var buildApp = /* @__PURE__ */ __name(async () => {
   fastify.register(contactRoutes, { prefix: "/api/v1/contact" });
   fastify.register(purchaseRoutes, { prefix: "/api/v1/purchase" });
   fastify.register(commentsRoutes, { prefix: "/api/v1/comments" });
-  fastify.register(twitchRoutes, { prefix: "/api/v1/twitch" });
   fastify.register(priceRoutes, { prefix: "/api/v1/price" });
   fastify.register(dexRoutes, { prefix: "/api/v1/dex" });
   fastify.register(notificationRoutes, { prefix: "/api/v1/notifications" });

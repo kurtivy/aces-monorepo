@@ -215,15 +215,6 @@ export class HealthCheckService {
       category: 'Contact',
     },
 
-    // Twitch API
-    {
-      name: 'Twitch - Health',
-      path: '/api/v1/twitch/health',
-      method: 'GET',
-      expectedStatus: [200, 404],
-      category: 'Twitch',
-    },
-
     // Product Images API
     {
       name: 'Product Images - Health',

@@ -19,7 +19,6 @@ import { purchaseRoutes } from './routes/v1/purchase';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
 import { portfolioRoutes } from './routes/v1/portfolio';
-import { twitchRoutes } from './routes/v1/twitch';
 import { dexRoutes } from './routes/v1/dex';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
@@ -341,7 +340,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(conciergeRoutes, { prefix: '/api/v1/concierge' });
   fastify.register(purchaseRoutes, { prefix: '/api/v1/purchase' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
-  fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
   fastify.register(dexRoutes, { prefix: '/api/v1/dex' });
 
   // NEW: Phase 1 - Token creation and notifications

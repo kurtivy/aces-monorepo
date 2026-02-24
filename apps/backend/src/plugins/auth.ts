@@ -66,7 +66,6 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/upload-image',
         '/api/v1/tokens', // Token data and chart data endpoints
         '/api/v1/dex', // DEX quote/pool endpoints
-        '/api/v1/twitch', // Twitch stream endpoints
         '/api/v1/cron/trigger', // Cron trigger endpoint for manual testing
         '/api/v1/cron/status', // Cron status endpoint
         '/api/cron/sync-tokens', // Vercel cron endpoint
