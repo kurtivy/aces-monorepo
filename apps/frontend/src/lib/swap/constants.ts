@@ -84,6 +84,13 @@ export const POLLING_INTERVALS = {
 export const APPROVAL_CONFIRMATIONS = 2;
 
 /**
+ * Number of confirmations to wait for swap transactions
+ * Ensures transaction is finalized and visible on block explorers
+ * Base has ~2 second blocks, so 2 confirmations = ~4 seconds
+ */
+export const SWAP_CONFIRMATIONS = 2;
+
+/**
  * Price quote debounce delay in milliseconds
  */
 export const PRICE_QUOTE_DEBOUNCE_MS = 1000;

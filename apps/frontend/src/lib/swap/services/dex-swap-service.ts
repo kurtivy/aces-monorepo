@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import type { TransactionResult, StatusCallback, DexQuoteResponse, PaymentAsset } from '../types';
-import { SWAP_DEADLINE_BUFFER_SECONDS } from '../constants';
+import { SWAP_DEADLINE_BUFFER_SECONDS, SWAP_CONFIRMATIONS } from '../constants';
 import { ERC20_ABI } from '@/lib/contracts/abi';
 
 // Aerodrome V2 Router ABI - uses Route[] with {from,to,stable,factory}
@@ -240,12 +240,14 @@ export class DexSwapService {
       }
 
       // console.log('[DexSwapService] Swap transaction sent:', tx.hash);
-      onStatus?.('Waiting for confirmation...');
+      onStatus?.(`Waiting for confirmations (1/${SWAP_CONFIRMATIONS})...`);
 
-      const receipt = await tx.wait();
-      // console.log('[DexSwapService] ✅ Swap confirmed');
+      // Wait for multiple confirmations to ensure transaction is finalized
+      // and visible on block explorers when user clicks the link
+      const receipt = await tx.wait(SWAP_CONFIRMATIONS);
+      // console.log('[DexSwapService] ✅ Swap confirmed with', SWAP_CONFIRMATIONS, 'confirmations');
 
-      onStatus?.('Swap confirmed!');
+      onStatus?.('Transaction confirmed!');
 
       return {
         success: true,

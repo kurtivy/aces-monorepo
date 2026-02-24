@@ -19,12 +19,10 @@ import {
 
 // Import NEW unified hooks
 import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
-import { useSwapMode } from '@/hooks/swap/use-swap-mode';
 import { useTokenBalances } from '@/hooks/swap/use-token-balances';
 import { useUnifiedQuote } from '@/hooks/swap/use-unified-quote';
 import { useUnifiedSwap } from '@/hooks/swap/use-unified-swap';
 import { useTokenAllowance } from '@/hooks/swap/use-token-allowance';
-import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { TransactionSuccessModal } from './transaction-success-modal';
 
 // Import utilities
@@ -142,33 +140,12 @@ export default function TokenSwapInterface({
     return ['ACES', 'USDC', 'USDT'].includes(normalized);
   }, []);
 
-  // Determine swap mode
-  const swapMode = useSwapMode({
-    tokenAddress,
-    chainId,
-    dexMeta,
-    routerAddress,
-  });
-
-  const { isDexMode, bondingPercentage, tokenBonded, bondingLoading, canSwap } = swapMode;
-
-  // Get bonding curve data to check remaining capacity
-  const bondingData = useTokenBondingData(tokenAddress, chainId);
-  const { currentSupply, tokensBondedAt } = bondingData;
-
-  // Calculate remaining tokens available in bonding curve
-  const remainingBondingCapacity = useMemo(() => {
-    if (isDexMode || !currentSupply || !tokensBondedAt) return null;
-
-    const supply = Number.parseFloat(currentSupply);
-    const target = Number.parseFloat(tokensBondedAt);
-
-    if (!Number.isFinite(supply) || !Number.isFinite(target) || target <= 0) {
-      return null;
-    }
-
-    return Math.max(0, target - supply);
-  }, [isDexMode, currentSupply, tokensBondedAt]);
+  // All tokens are DEX mode now - hardcode values
+  const isDexMode = true;
+  const bondingPercentage = 100;
+  const tokenBonded = true;
+  const bondingLoading = false;
+  const canSwap = true;
 
   // Debug logging for DEX mode detection
   // useEffect(() => {
@@ -301,23 +278,11 @@ export default function TokenSwapInterface({
   );
 
   const sellOptions = useMemo(() => {
-    // In bonding mode, support ETH/USDC/USDT/ACES for buys, and include dynamic RWA option last
-    if (activeTab === 'buy' && !isDexMode) {
+    // Buying: support ETH/USDC/ACES and the RWA token
+    if (activeTab === 'buy') {
       return [
         { value: 'ETH', label: 'ETH' },
         { value: 'USDC', label: 'USDC' },
-        // { value: 'USDT', label: 'USDT' },
-        { value: 'ACES', label: 'ACES' },
-        ...(tokenSymbol ? [{ value: tokenSymbol, label: tokenSymbol }] : []),
-      ];
-    }
-
-    // In DEX mode, allow all payment options as before (including ETH), and include dynamic RWA option last
-    if (activeTab === 'buy' && isDexMode) {
-      return [
-        { value: 'ETH', label: 'ETH' },
-        { value: 'USDC', label: 'USDC' },
-        // { value: 'USDT', label: 'USDT' },
         { value: 'ACES', label: 'ACES' },
         ...(tokenSymbol ? [{ value: tokenSymbol, label: tokenSymbol }] : []),
       ];
@@ -328,7 +293,7 @@ export default function TokenSwapInterface({
       { value: 'ACES', label: 'ACES' },
       { value: tokenSymbol, label: tokenSymbol },
     ];
-  }, [activeTab, isDexMode, tokenSymbol]);
+  }, [activeTab, tokenSymbol]);
 
   // Helper function to get token image
   const getTokenImage = useCallback(
@@ -478,28 +443,10 @@ export default function TokenSwapInterface({
   }, [amount]);
 
   // Check token allowance for DEX router (needed for any ERC20 token)
-  // Allowance logic:
-  // - Bonding mode + ACES: approve FACTORY_PROXY (for direct buys)
-  // - Bonding mode + USDC/USDT: approve ACES_SWAP (for multi-hop swaps)
-  // - DEX mode: approve AERODROME_ROUTER
-  const bondingSwapAddress = useMemo(
-    () => (contractAddresses as Record<string, string> | undefined)?.ACES_SWAP || '',
-    [contractAddresses],
-  );
-
+  // DEX mode only: approve AERODROME_ROUTER for all swaps
   const getSpenderAddress = useCallback(() => {
-    if (isDexMode) {
-      return routerAddress; // DEX mode: approve Aerodrome router
-    }
-
-    // Bonding mode
-    if (selectedSellAsset === 'ACES') {
-      return factoryProxyAddress; // ACES: approve Factory for direct buys
-    }
-
-    // USDC/USDT/ETH: approve AcesSwap for multi-hop
-    return bondingSwapAddress;
-  }, [isDexMode, selectedSellAsset, factoryProxyAddress, bondingSwapAddress, routerAddress]);
+    return routerAddress;
+  }, [routerAddress]);
 
   const tokenAllowance = useTokenAllowance({
     tokenAddress: getTokenAddressForAsset(selectedSellAsset),
@@ -589,93 +536,6 @@ export default function TokenSwapInterface({
   const isTokenQuoteLoading = hasValidAmount && quote.loading;
   const isUsdQuoteLoading = hasValidAmount && quote.loading;
 
-  // Cap the output amount to the remaining bonding curve capacity
-  const cappedOutputAmount = useMemo(() => {
-    // Only apply capping for RWA buys in bonding mode
-    if (!isRwaBuy || isDexMode || remainingBondingCapacity === null || !quote.outputAmount) {
-      return quote.outputAmount;
-    }
-
-    const outputNum = Number.parseFloat(quote.outputAmount);
-    if (!Number.isFinite(outputNum)) {
-      return quote.outputAmount;
-    }
-
-    // Cap to remaining capacity
-    if (outputNum > remainingBondingCapacity) {
-      return remainingBondingCapacity.toString();
-    }
-
-    return quote.outputAmount;
-  }, [isRwaBuy, isDexMode, remainingBondingCapacity, quote.outputAmount]);
-
-  // Check if the output was capped
-  const isOutputCapped = useMemo(() => {
-    if (!quote.outputAmount || !cappedOutputAmount) return false;
-    return Number.parseFloat(quote.outputAmount) > Number.parseFloat(cappedOutputAmount);
-  }, [quote.outputAmount, cappedOutputAmount]);
-
-  // Calculate proportionally adjusted USD values when output is capped
-  const cappedOutputUsdValue = useMemo(() => {
-    if (!isOutputCapped || !quote.outputUsdValue || !quote.outputAmount) {
-      return quote.outputUsdValue;
-    }
-
-    const originalAmount = Number.parseFloat(quote.outputAmount);
-    const cappedAmount = Number.parseFloat(cappedOutputAmount);
-
-    if (
-      !Number.isFinite(originalAmount) ||
-      !Number.isFinite(cappedAmount) ||
-      originalAmount === 0
-    ) {
-      return quote.outputUsdValue;
-    }
-
-    const ratio = cappedAmount / originalAmount;
-
-    // Parse USD value (handle both numeric strings and formatted strings like "$1,234.56")
-    const originalUsdStr = String(quote.outputUsdValue).replace(/[$,]/g, '');
-    const originalUsd = Number.parseFloat(originalUsdStr);
-
-    if (!Number.isFinite(originalUsd)) {
-      return quote.outputUsdValue;
-    }
-
-    const cappedUsd = originalUsd * ratio;
-    return cappedUsd.toFixed(2);
-  }, [isOutputCapped, quote.outputUsdValue, quote.outputAmount, cappedOutputAmount]);
-
-  const cappedMinOutputUsdValue = useMemo(() => {
-    if (!isOutputCapped || !quote.minOutputUsdValue || !quote.outputAmount) {
-      return quote.minOutputUsdValue;
-    }
-
-    const originalAmount = Number.parseFloat(quote.outputAmount);
-    const cappedAmount = Number.parseFloat(cappedOutputAmount);
-
-    if (
-      !Number.isFinite(originalAmount) ||
-      !Number.isFinite(cappedAmount) ||
-      originalAmount === 0
-    ) {
-      return quote.minOutputUsdValue;
-    }
-
-    const ratio = cappedAmount / originalAmount;
-
-    // Parse USD value (handle both numeric strings and formatted strings)
-    const originalMinUsdStr = String(quote.minOutputUsdValue).replace(/[$,]/g, '');
-    const originalMinUsd = Number.parseFloat(originalMinUsdStr);
-
-    if (!Number.isFinite(originalMinUsd)) {
-      return quote.minOutputUsdValue;
-    }
-
-    const cappedMinUsd = originalMinUsd * ratio;
-    return cappedMinUsd.toFixed(2);
-  }, [isOutputCapped, quote.minOutputUsdValue, quote.outputAmount, cappedOutputAmount]);
-
   // ========================================
   // USD DISPLAY (from unified quote)
   // ========================================
@@ -684,8 +544,8 @@ export default function TokenSwapInterface({
   }, [quote.inputUsdValue]);
 
   const outputUsdDisplay = useMemo(() => {
-    return cappedOutputUsdValue ? formatUsdValue(cappedOutputUsdValue) : null;
-  }, [cappedOutputUsdValue]);
+    return quote.outputUsdValue ? formatUsdValue(quote.outputUsdValue) : null;
+  }, [quote.outputUsdValue]);
 
   // ========================================
   // VALIDATION
@@ -842,16 +702,16 @@ export default function TokenSwapInterface({
   }, [amount]);
 
   const outputAmountDisplay = useMemo(() => {
-    if (!hasValidAmount || !cappedOutputAmount) {
+    if (!hasValidAmount || !quote.outputAmount) {
       return isOutputToken ? '0' : '0.00';
     }
 
     if (isOutputToken) {
-      return formatIntegerDisplay(cappedOutputAmount);
+      return formatIntegerDisplay(quote.outputAmount);
     }
 
-    return formatDecimalDisplay(cappedOutputAmount, 4);
-  }, [hasValidAmount, cappedOutputAmount, isOutputToken]);
+    return formatDecimalDisplay(quote.outputAmount, 4);
+  }, [hasValidAmount, quote.outputAmount, isOutputToken]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -887,14 +747,14 @@ export default function TokenSwapInterface({
     if (!isSwapSupported) {
       setTransactionStatus({
         type: 'error',
-        message: 'This swap is not yet supported. Please use ACES or wait until 100% bonded.',
+        message: 'This swap is not yet supported.',
       });
       return;
     }
 
     // Validate minimum output amount for multi-hop swaps (ETH/USDC/USDT → RWA)
     if (quote.needsMultiHop && isRwaBuy) {
-      const outputNum = Number.parseFloat(cappedOutputAmount || '0');
+      const outputNum = Number.parseFloat(quote.outputAmount || '0');
       if (outputNum < 1) {
         setTransactionStatus({
           type: 'error',
@@ -907,14 +767,11 @@ export default function TokenSwapInterface({
     try {
       setLoading('Preparing swap...');
 
-      // Use capped output amount for the swap if applicable
-      const swapQuote = isOutputCapped ? { ...quote, outputAmount: cappedOutputAmount } : quote;
-
       const result = await swap.executeSwap({
         sellToken,
         buyToken,
         amount,
-        quote: swapQuote,
+        quote,
         onStatus: setLoading,
       });
 
@@ -922,7 +779,7 @@ export default function TokenSwapInterface({
         // If buying the RWA token, show full-screen success modal
         if (isRwaBuy) {
           setSuccessTxHash(result.hash || result.receipt?.transactionHash || '');
-          setSuccessTokenAmount(cappedOutputAmount || '0');
+          setSuccessTokenAmount(quote.outputAmount || '0');
           setSuccessSpentAmount(amount);
           setSuccessSpentAsset(
             (selectedSellAsset as 'ACES' | 'USDC' | 'USDT' | 'ETH' | 'WETH') || 'ACES',
@@ -932,7 +789,7 @@ export default function TokenSwapInterface({
           // Otherwise show a toast (e.g., ACES buys)
           setTransactionStatus({
             type: 'success',
-            message: isDexMode ? 'Swap confirmed on Aerodrome!' : 'Transaction successful!',
+            message: 'Swap confirmed on Aerodrome!',
           });
         }
         setAmount('');
@@ -959,13 +816,10 @@ export default function TokenSwapInterface({
     buyToken,
     amount,
     quote,
-    isDexMode,
     refreshBalances,
     isRwaBuy,
     selectedSellAsset,
     tokenSymbol,
-    cappedOutputAmount,
-    isOutputCapped,
     setTransactionStatus,
   ]);
 
@@ -1003,7 +857,7 @@ export default function TokenSwapInterface({
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
-      debugLog(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`, {
+      debugLog(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval for Aerodrome...`, {
         tokenAddress,
         spender,
         isUSDT,
@@ -1038,7 +892,7 @@ export default function TokenSwapInterface({
     selectedSellAsset,
     getTokenAddressForAsset,
     tokenAllowance,
-    isDexMode,
+    setTransactionStatus,
   ]);
 
   // Auto-detect and display errors (minimum amount warnings, DEX quote errors)
@@ -1047,12 +901,11 @@ export default function TokenSwapInterface({
     if (transactionStatus?.type === 'error' && loading) return;
     if (transactionStatus?.type === 'success') return;
 
-    let dexError =
-      isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount ? quote.error : null;
+    let dexError = quote.strategy === 'dex' && quote.error && hasValidAmount ? quote.error : null;
 
-    // Improve DEX error copy for missing pools
+    // Improve DEX error copy
     if (dexError && /route pool not found/i.test(dexError)) {
-      dexError = 'DEX pool not live yet; staying in bonding mode. Try ACES or wait for pool.';
+      dexError = 'DEX pool not found. Please contact support.';
     }
     if (dexError && /slipstream|v3.*amm|pool not supported/i.test(dexError)) {
       dexError = 'This pool is Aerodrome Slipstream (V3). Quotes only work for classic AMM pools.';
@@ -1073,7 +926,6 @@ export default function TokenSwapInterface({
     }
   }, [
     minimumAmountWarning,
-    isDexMode,
     quote.strategy,
     quote.error,
     hasValidAmount,
@@ -1198,19 +1050,11 @@ export default function TokenSwapInterface({
               <ProgressionBar
                 tokenAddress={tokenAddress}
                 chainId={chainId}
-                percentage={bondingPercentage}
-                isBondedOverride={tokenBonded}
+                percentage={100}
+                isBondedOverride={true}
               />
-              <div
-                className={`mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center ${
-                  tokenBonded ? 'text-[#D7BF75]/80' : 'text-[#D7BF75]/80'
-                }`}
-              >
-                {bondingLoading
-                  ? 'Loading bonding data...'
-                  : tokenBonded
-                    ? 'BONDED - 100%'
-                    : `Bonded ${bondingPercentage.toFixed(1)}% / 100%`}
+              <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
+                BONDED - 100%
               </div>
             </div>
 
@@ -1549,17 +1393,12 @@ export default function TokenSwapInterface({
                         </div>
                         {!isUsdQuoteLoading &&
                           hasValidAmount &&
-                          cappedMinOutputUsdValue &&
-                          cappedMinOutputUsdValue !== outputUsdDisplay && (
+                          quote.minOutputUsdValue &&
+                          quote.minOutputUsdValue !== outputUsdDisplay && (
                             <div className="text-[10px] text-[#D0B284]/50">
-                              min. {formatUsdValue(cappedMinOutputUsdValue)}
+                              min. {formatUsdValue(quote.minOutputUsdValue)}
                             </div>
                           )}
-                        {isOutputCapped && (
-                          <div className="text-[10px] text-[#D0B284]/70 font-semibold">
-                            (max available)
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -1626,13 +1465,11 @@ export default function TokenSwapInterface({
               )}
             </div>
 
-            {isDexMode && (
-              <div className="text-center">
-                <span className="text-xs font-mono text-[#D0B284]/60 uppercase">
-                  POWERED BY AERODROME
-                </span>
-              </div>
-            )}
+            <div className="text-center">
+              <span className="text-xs font-mono text-[#D0B284]/60 uppercase">
+                POWERED BY AERODROME
+              </span>
+            </div>
 
             {ENABLE_SWAP_DEBUG_LOGS && hasValidAmount && quote.outputAmount && (
               <div className="mt-3 rounded-lg border border-[#D0B284]/30 bg-black/30 p-3 text-left">

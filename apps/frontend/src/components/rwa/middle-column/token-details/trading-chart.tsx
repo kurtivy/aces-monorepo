@@ -1,5 +1,5 @@
 import React, { type Dispatch, type SetStateAction } from 'react';
-import TradingViewChart from '@/components/charts/trading-view-chart';
+import DexScreenerChart from '@/components/charts/dexscreener-chart';
 import TokenMarketCap from './token-market-cap';
 import type { DatabaseListing, ImageData } from '@/types/rwa/section.types';
 
@@ -28,6 +28,8 @@ const TradingChart: React.FC<TradingChartProps> = ({
   selectedImageIndex,
   onImageSelect,
 }) => {
+  const poolAddress = dexMeta?.poolAddress || tokenAddress;
+
   return (
     <div className="space-y-4">
       <TokenMarketCap
@@ -38,13 +40,10 @@ const TradingChart: React.FC<TradingChartProps> = ({
         selectedImageIndex={selectedImageIndex}
         onImageSelect={onImageSelect}
       />
-      <TradingViewChart
-        tokenAddress={tokenAddress}
+      <DexScreenerChart
+        poolAddress={poolAddress}
         tokenSymbol={tokenSymbol}
-        tokenName={title}
-        imageSrc={imageSrc}
         heightClass={heightClass}
-        dexMeta={dexMeta}
       />
     </div>
   );

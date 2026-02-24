@@ -1,8 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ethers } from 'ethers';
-import { BondingCurveSwapService } from '@/lib/swap/services/bonding-curve-swap-service';
 import { DexSwapService } from '@/lib/swap/services/dex-swap-service';
-import { useAcesSwapV2 } from '@/hooks/swap/use-aces-swap-v2';
 import type { TransactionResult } from '@/lib/swap/types';
 import type { DexQuoteResponse } from '@/lib/api/dex';
 import type { UnifiedQuoteResult } from './use-unified-quote';
@@ -55,9 +53,6 @@ export function useUnifiedSwap({
 }: UseUnifiedSwapProps) {
   const [loading, setLoading] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-
-  // AcesSwap contract hook (for multi-hop in bonding mode)
-  const acesSwapContract = useAcesSwapV2({ signer, walletAddress });
 
   /**
    * Execute swap based on token pair and mode
@@ -141,7 +136,6 @@ export function useUnifiedSwap({
       tokenAddress,
       routerAddress,
       isDexMode,
-      acesSwapContract,
     ],
   );
 
@@ -149,7 +143,5 @@ export function useUnifiedSwap({
     executeSwap,
     loading,
     error,
-    acesSwapReady: acesSwapContract.isReady,
-    acesSwapDeployed: acesSwapContract.isDeployed,
   };
 }
