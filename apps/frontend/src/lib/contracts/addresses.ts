@@ -14,16 +14,21 @@ export const CONTRACT_ADDRESSES = {
     CREATE2_DEPLOYER:
       process.env.NEXT_PUBLIC_CREATE2_DEPLOYER_BASE_SEPOLIA ||
       '0x370B6ED939de3da70f2A884db2eFb4E0C540702A', // Base Sepolia CREATE2Deployer
-    FIXED_SUPPLY_FACTORY:
-      process.env.NEXT_PUBLIC_FIXED_SUPPLY_FACTORY_BASE_SEPOLIA || '', // Low-gas FixedSupplyERC20Factory (optional)
+    FIXED_SUPPLY_FACTORY: process.env.NEXT_PUBLIC_FIXED_SUPPLY_FACTORY_BASE_SEPOLIA || '', // Low-gas FixedSupplyERC20Factory (optional)
     AERODROME_ROUTER: process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_SEPOLIA || '', // Optional: only if a testnet router exists
     AERODROME_FACTORY: process.env.NEXT_PUBLIC_AERODROME_FACTORY_BASE_SEPOLIA || '', // V2 Pool Factory (Volatile/Stable)
     AERODROME_CL_FACTORY: process.env.NEXT_PUBLIC_AERODROME_CL_FACTORY_BASE_SEPOLIA || '', // CL Pool Factory (SlipStream)
-    AERODROME_FACTORY_REGISTRY: process.env.NEXT_PUBLIC_AERODROME_FACTORY_REGISTRY_BASE_SEPOLIA || '', // Factory Registry
-    AERODROME_CL_POOL_LAUNCHER: process.env.NEXT_PUBLIC_AERODROME_CL_POOL_LAUNCHER_BASE_SEPOLIA || '',
-    AERODROME_CL_LOCKER_FACTORY: process.env.NEXT_PUBLIC_AERODROME_CL_LOCKER_FACTORY_BASE_SEPOLIA || '',
-    AERODROME_V2_POOL_LAUNCHER: process.env.NEXT_PUBLIC_AERODROME_V2_POOL_LAUNCHER_BASE_SEPOLIA || '',
-    AERODROME_V2_LOCKER_FACTORY: process.env.NEXT_PUBLIC_AERODROME_V2_LOCKER_FACTORY_BASE_SEPOLIA || '',
+    AERODROME_CL_QUOTER: process.env.NEXT_PUBLIC_AERODROME_CL_QUOTER_BASE_SEPOLIA || '', // Slipstream Quoter (if deployed on Sepolia)
+    AERODROME_FACTORY_REGISTRY:
+      process.env.NEXT_PUBLIC_AERODROME_FACTORY_REGISTRY_BASE_SEPOLIA || '', // Factory Registry
+    AERODROME_CL_POOL_LAUNCHER:
+      process.env.NEXT_PUBLIC_AERODROME_CL_POOL_LAUNCHER_BASE_SEPOLIA || '',
+    AERODROME_CL_LOCKER_FACTORY:
+      process.env.NEXT_PUBLIC_AERODROME_CL_LOCKER_FACTORY_BASE_SEPOLIA || '',
+    AERODROME_V2_POOL_LAUNCHER:
+      process.env.NEXT_PUBLIC_AERODROME_V2_POOL_LAUNCHER_BASE_SEPOLIA || '',
+    AERODROME_V2_LOCKER_FACTORY:
+      process.env.NEXT_PUBLIC_AERODROME_V2_LOCKER_FACTORY_BASE_SEPOLIA || '',
     AERODROME_LOCKER: process.env.NEXT_PUBLIC_AERODROME_LOCKER_BASE_SEPOLIA || '',
   },
   // Base Mainnet (Chain ID: 8453) - PRODUCTION
@@ -40,8 +45,7 @@ export const CONTRACT_ADDRESSES = {
     CREATE2_DEPLOYER:
       process.env.NEXT_PUBLIC_CREATE2_DEPLOYER_BASE_MAINNET ||
       '0x4756EFBD806650aC4f864bEd09f25C49f565fba9', // Base Mainnet CREATE2Deployer
-    FIXED_SUPPLY_FACTORY:
-      process.env.NEXT_PUBLIC_FIXED_SUPPLY_FACTORY_BASE_MAINNET || '', // Low-gas FixedSupplyERC20Factory (optional)
+    FIXED_SUPPLY_FACTORY: process.env.NEXT_PUBLIC_FIXED_SUPPLY_FACTORY_BASE_MAINNET || '', // Low-gas FixedSupplyERC20Factory (optional)
     AERODROME_ROUTER:
       process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET ||
       '0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43', // Aerodrome Router on Base Mainnet
@@ -50,7 +54,10 @@ export const CONTRACT_ADDRESSES = {
       '0x420DD381b31aEf6683db6B902084cB0FFECe40Da', // Aerodrome V2 Pool Factory (Volatile/Stable) on Base Mainnet
     AERODROME_CL_FACTORY:
       process.env.NEXT_PUBLIC_AERODROME_CL_FACTORY_BASE_MAINNET ||
-      '0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A', // Aerodrome CL Pool Factory (SlipStream / Concentrated Liquidity) on Base Mainnet
+      '0xaDe65c38CD4849aDBA595a4323a8C7DdfE89716a', // Aerodrome CL Pool Factory used by CL Pool Launcher (SlipStream; has 500 = 2%)
+    AERODROME_CL_QUOTER:
+      process.env.NEXT_PUBLIC_AERODROME_CL_QUOTER_BASE_MAINNET ||
+      '0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0', // Aerodrome Slipstream QuoterV2 on Base Mainnet
     AERODROME_FACTORY_REGISTRY:
       process.env.NEXT_PUBLIC_AERODROME_FACTORY_REGISTRY_BASE_MAINNET ||
       '0x5C3F18F06CC09CA1910767A34a20F771039E37C0', // Aerodrome Factory Registry on Base Mainnet
@@ -71,7 +78,7 @@ export const CONTRACT_ADDRESSES = {
       process.env.NEXT_PUBLIC_AERODROME_LOCKER_BASE_MAINNET ||
       '0x8BF02b8da7a6091Ac1326d6db2ed25214D812219', // Same as CL Locker Factory (locker instances created by it)
     ACES_SWAP:
-      process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_MAINNET || 
+      process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_MAINNET ||
       '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest (multi-hop: ETH/USDC/USDT → ACES → RWA)
   },
 } as const;
@@ -97,9 +104,7 @@ export function validateContractAddresses(chainId: number): boolean {
   const addresses = getContractAddresses(chainId);
 
   // All networks need ACES_TOKEN and FACTORY_PROXY for trading to work
-  const hasRequiredContracts = Boolean(
-    addresses.ACES_TOKEN && addresses.FACTORY_PROXY,
-  );
+  const hasRequiredContracts = Boolean(addresses.ACES_TOKEN && addresses.FACTORY_PROXY);
 
   if (!hasRequiredContracts && chainId === 84532) {
     console.error(

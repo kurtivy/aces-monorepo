@@ -186,7 +186,15 @@ export class AerodromeService {
         lastUpdated: Date.now(),
       };
     } catch (error) {
-      console.error('[AerodromeService] Error fetching pool state:', error);
+      console.error(
+        '[AerodromeService] Error fetching pool state for',
+        tokenA,
+        tokenB,
+        'pool:',
+        knownPoolAddress ?? '(from factory)',
+        '- if this is a Slipstream (V3) pool, only V2 AMM is supported. Error:',
+        error,
+      );
       return null;
     }
   }

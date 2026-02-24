@@ -46,6 +46,7 @@ function normalizeRpcUrl(url?: string, fallback?: string): string {
 export function getBaseMainnetRpcUrl(): string {
   return normalizeRpcUrl(
     process.env.QUICKNODE_BASE_URL ||
+      process.env.NEXT_PUBLIC_QUICKNODE_BASE_URL ||
       process.env.BASE_MAINNET_RPC_URL ||
       process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL,
     BASE_MAINNET.defaultRpc,

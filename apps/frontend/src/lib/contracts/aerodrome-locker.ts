@@ -22,6 +22,8 @@ const CL_POOL_LAUNCHER_ABI = [
   'function getPool(address tokenA, address tokenB, int24 tickSpacing) external view returns (address)',
   'function lockerFactory() external view returns (address)',
   'function isPairableToken(address _token) external view returns (bool)',
+  'function addPairableToken(address _token) external',
+  'function owner() external view returns (address)',
 ];
 
 const LOCKER_ABI = [
@@ -605,6 +607,88 @@ export async function verifyAerodromeContracts(
   return { v2Factory, clFactory, factoryRegistry, clPoolLauncher };
 }
 
+/**
+ * Check whether ACES (or a given token) is whitelisted as a pairable token on the CL Pool Launcher,
+ * and optionally add it if the signer is the launcher owner.
+ * Use this to ensure pool launches with ACES succeed (InvalidToken fix).
+ */
+export const ACES_TOKEN_BASE_MAINNET = '0x55337650856299363c496065C836B9C6E9dE0367';
+
+export interface EnsurePairableResult {
+  pairable: boolean;
+  launcherAddress: string;
+  tokenAddress: string;
+  owner: string;
+  /** Set if we added the token in this call */
+  txHash?: string;
+  message: string;
+}
+
+export async function ensureAcesIsPairableOnLauncher(
+  provider: ethers.providers.Provider,
+  chainId: number = 8453,
+  signer?: ethers.Signer,
+  tokenAddress: string = ACES_TOKEN_BASE_MAINNET,
+): Promise<EnsurePairableResult> {
+  const addresses = getContractAddresses(chainId);
+  const launcherAddress = addresses.AERODROME_CL_POOL_LAUNCHER;
+  const token = ethers.utils.getAddress(tokenAddress);
+  if (!launcherAddress || launcherAddress === '0x0000000000000000000000000000000000000000') {
+    return {
+      pairable: false,
+      launcherAddress: launcherAddress || '0x0',
+      tokenAddress: token,
+      owner: '',
+      message: 'CL Pool Launcher not configured for this chain.',
+    };
+  }
+  const launcher = new ethers.Contract(launcherAddress, CL_POOL_LAUNCHER_ABI, signer || provider);
+  const [isPairable, owner] = await Promise.all([
+    launcher.isPairableToken(token),
+    launcher.owner(),
+  ]);
+  const ownerStr = owner?.toString?.() ?? String(owner);
+  if (isPairable) {
+    return {
+      pairable: true,
+      launcherAddress,
+      tokenAddress: token,
+      owner: ownerStr,
+      message: `Token ${token} is already whitelisted as pairable on the launcher.`,
+    };
+  }
+  if (!signer) {
+    return {
+      pairable: false,
+      launcherAddress,
+      tokenAddress: token,
+      owner: ownerStr,
+      message: `Token ${token} is NOT pairable. Launcher owner (${ownerStr}) must call addPairableToken("${token}") on ${launcherAddress}.`,
+    };
+  }
+  const signerAddress = await signer.getAddress();
+  if (signerAddress.toLowerCase() !== ownerStr.toLowerCase()) {
+    return {
+      pairable: false,
+      launcherAddress,
+      tokenAddress: token,
+      owner: ownerStr,
+      message: `Token ${token} is NOT pairable. Only the launcher owner (${ownerStr}) can call addPairableToken. Current signer: ${signerAddress}.`,
+    };
+  }
+  const launcherWithSigner = new ethers.Contract(launcherAddress, CL_POOL_LAUNCHER_ABI, signer);
+  const tx = await launcherWithSigner.addPairableToken(token);
+  const receipt = await tx.wait();
+  return {
+    pairable: true,
+    launcherAddress,
+    tokenAddress: token,
+    owner: ownerStr,
+    txHash: receipt?.transactionHash ?? tx.hash,
+    message: `Added ${token} as pairable token. Tx: ${receipt?.transactionHash ?? tx.hash}.`,
+  };
+}
+
 export interface LockerInfo {
   owner: string;
   lockedUntil: number;
@@ -654,4 +738,185 @@ export async function inspectLocker(
       : Number(beneficiaryShare),
     isLocked,
   };
+}
+
+// --- CL pool inspection (fee + optional locker) ---
+
+const CL_POOL_ABI = [
+  'function factory() external view returns (address)',
+  'function tickSpacing() external view returns (int24)',
+  'function token0() external view returns (address)',
+  'function token1() external view returns (address)',
+];
+
+const CL_FACTORY_ABI = [
+  'function getSwapFee(address pool) external view returns (uint24)',
+  'function tickSpacings() external view returns (int24[])',
+  'function tickSpacingToFee(int24 tickSpacing) external view returns (uint24)',
+];
+
+/** LockerFactory has lockers(pool) -> address[] */
+const LOCKER_FACTORY_ABI = [
+  'function lockers(address _pool) external view returns (address[])',
+  'function lockersCount(address _pool) external view returns (uint256)',
+];
+
+/** One enabled tick spacing from the CL factory (Aerodrome Slipstream). */
+export interface EnabledTickSpacing {
+  tickSpacing: number;
+  /** Fee in factory units (10000 = 1%, 20000 = 2%). */
+  feeRaw: number;
+  /** Fee as percent string e.g. "1.00%" */
+  feePercent: string;
+}
+
+/**
+ * Fetch the list of enabled tick spacings and their fees from the Aerodrome CL factory.
+ * Use this to pick a valid tick spacing for launch (e.g. for 2% use one with feeRaw 200 if available).
+ * @param provider RPC provider
+ * @param chainId Default 8453 (Base)
+ * @param factoryAddressOverride If the launcher uses a different factory, pass it here (e.g. from trace).
+ */
+export async function getEnabledTickSpacings(
+  provider: ethers.providers.Provider,
+  chainId: number = 8453,
+  factoryAddressOverride?: string,
+): Promise<EnabledTickSpacing[]> {
+  const addresses = getContractAddresses(chainId);
+  const factoryAddress =
+    factoryAddressOverride ||
+    addresses.AERODROME_CL_FACTORY ||
+    '0x0000000000000000000000000000000000000000';
+  if (!factoryAddress || factoryAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error('AERODROME_CL_FACTORY not configured for this chain');
+  }
+  const factory = new ethers.Contract(factoryAddress, CL_FACTORY_ABI, provider);
+  const spacingsRaw = await factory.tickSpacings();
+  const spacings = Array.isArray(spacingsRaw) ? spacingsRaw : [];
+  const result: EnabledTickSpacing[] = [];
+  for (let i = 0; i < spacings.length; i++) {
+    const ts = spacings[i];
+    const tsNum =
+      typeof ts === 'number' ? ts : ((ts as ethers.BigNumber).toNumber?.() ?? Number(ts));
+    const fee = await factory.tickSpacingToFee(tsNum);
+    const feeNum =
+      typeof fee === 'number' ? fee : ((fee as ethers.BigNumber).toNumber?.() ?? Number(fee));
+    // Slipstream factory: fee in hundredths of a basis point (100 = 0.01%, 10000 = 1%). So 2% = 20000.
+    const percent = feeNum / 10_000;
+    result.push({
+      tickSpacing: tsNum,
+      feeRaw: feeNum,
+      feePercent: `${percent.toFixed(2)}%`,
+    });
+  }
+  return result;
+}
+
+export interface CLPoolInspection {
+  poolAddress: string;
+  factoryAddress: string;
+  tickSpacing: number;
+  /** Fee in factory units (100 = 1%, 200 = 2%) */
+  feeRaw: number;
+  /** Fee as percent string e.g. "1%" */
+  feePercent: string;
+  token0: string;
+  token1: string;
+  /** Locker addresses for this pool (from LockerFactory.lockers(pool)) */
+  lockerAddresses: string[];
+  locker?: LockerInfo;
+}
+
+/**
+ * Get all locker addresses for a CL pool from the LockerFactory (Velodrome/Aerodrome: lockers(pool)).
+ */
+export async function getLockersForPool(
+  provider: ethers.providers.Provider,
+  poolAddress: string,
+  chainId: number = 8453,
+): Promise<string[]> {
+  const addresses = getContractAddresses(chainId);
+  const lockerFactoryAddress = addresses.AERODROME_CL_LOCKER_FACTORY;
+  if (
+    !lockerFactoryAddress ||
+    lockerFactoryAddress === '0x0000000000000000000000000000000000000000'
+  ) {
+    return [];
+  }
+  const factory = new ethers.Contract(lockerFactoryAddress, LOCKER_FACTORY_ABI, provider);
+  const list = await factory.lockers(poolAddress);
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((a: string) => a && a !== ethers.constants.AddressZero)
+    .map((a: string) => ethers.utils.getAddress(a));
+}
+
+/**
+ * Query a CL pool's fee from the Aerodrome CL factory and optionally inspect locker(s).
+ * If no lockerAddress is provided, looks up lockers for this pool via LockerFactory.lockers(pool)
+ * and inspects the first one (beneficiary, beneficiaryShare, etc.).
+ */
+export async function inspectCLPool(
+  provider: ethers.providers.Provider,
+  poolAddress: string,
+  options?: { lockerAddress?: string | null; chainId?: number },
+): Promise<CLPoolInspection> {
+  if (!poolAddress || poolAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Invalid pool address');
+  }
+  const chainId = options?.chainId ?? 8453;
+  const addresses = getContractAddresses(chainId);
+  const factoryAddress = addresses.AERODROME_CL_FACTORY;
+  if (!factoryAddress || factoryAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error('AERODROME_CL_FACTORY not configured for this chain');
+  }
+
+  const pool = new ethers.Contract(poolAddress, CL_POOL_ABI, provider);
+  const [poolFactory, tickSpacing, token0, token1] = await Promise.all([
+    pool.factory(),
+    pool.tickSpacing(),
+    pool.token0(),
+    pool.token1(),
+  ]);
+
+  // Fee from the pool's factory (Aerodrome: 100 = 1%, 200 = 2%)
+  const factory = new ethers.Contract(poolFactory || factoryAddress, CL_FACTORY_ABI, provider);
+  const feeResult = await factory.getSwapFee(poolAddress);
+  const feeRaw = feeResult.toNumber ? feeResult.toNumber() : Number(feeResult);
+  const feePercent = feeRaw / 100;
+
+  // Resolve locker(s): explicit address, or from LockerFactory.lockers(pool)
+  let lockerAddresses: string[] = [];
+  const explicitLocker = options?.lockerAddress?.trim();
+  if (explicitLocker && explicitLocker !== '0x0000000000000000000000000000000000000000') {
+    lockerAddresses = [explicitLocker];
+  } else {
+    try {
+      lockerAddresses = await getLockersForPool(provider, poolAddress, chainId);
+    } catch (e) {
+      console.warn('[inspectCLPool] getLockersForPool failed:', e);
+    }
+  }
+
+  const result: CLPoolInspection = {
+    poolAddress: ethers.utils.getAddress(poolAddress),
+    factoryAddress: (poolFactory || factoryAddress).toString(),
+    tickSpacing: tickSpacing.toNumber ? tickSpacing.toNumber() : Number(tickSpacing),
+    feeRaw,
+    feePercent: `${feePercent}%`,
+    token0: token0?.toString() ?? '',
+    token1: token1?.toString() ?? '',
+    lockerAddresses,
+  };
+
+  const toInspect = lockerAddresses[0];
+  if (toInspect) {
+    try {
+      result.locker = await inspectLocker(provider, toInspect);
+    } catch (e) {
+      console.warn('[inspectCLPool] Locker inspect failed:', e);
+    }
+  }
+
+  return result;
 }

@@ -28,6 +28,7 @@ import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { TransactionSuccessModal } from './transaction-success-modal';
 
 // Import utilities
+import { ethers } from 'ethers';
 import { formatAmountForDisplay, formatUsdValue } from '@/lib/swap/formatters';
 import type { PaymentAsset } from '@/lib/swap/types';
 import { clampAmountDecimals } from '@/lib/swap/amount-utils';
@@ -991,8 +992,6 @@ export default function TokenSwapInterface({
     try {
       setLoading('Requesting approval...');
 
-      const { ethers } = await import('ethers');
-
       // USDT on Base doesn't return a boolean from approve(), so we need a special ABI
       // that doesn't expect a return value to avoid decoding errors
       const isUSDT = selectedSellAsset === 'USDT';
@@ -1054,6 +1053,9 @@ export default function TokenSwapInterface({
     // Improve DEX error copy for missing pools
     if (dexError && /route pool not found/i.test(dexError)) {
       dexError = 'DEX pool not live yet; staying in bonding mode. Try ACES or wait for pool.';
+    }
+    if (dexError && /slipstream|v3.*amm|pool not supported/i.test(dexError)) {
+      dexError = 'This pool is Aerodrome Slipstream (V3). Quotes only work for classic AMM pools.';
     }
     const nextMessage = minimumAmountWarning ?? dexError ?? null;
 

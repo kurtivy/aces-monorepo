@@ -33,6 +33,7 @@ import {
   type SelectedCanvasItem,
   type ChainSwitchFeedback,
   type MiningProgress,
+  type PoolPreflight,
   INITIAL_LISTING_FORM,
   INITIAL_POOL_FORM,
   INITIAL_FIXED_SUPPLY_DEPLOYMENT,
@@ -74,6 +75,8 @@ export function useTokenLaunchState() {
   const [poolForm, setPoolForm] = useState<PoolForm>(INITIAL_POOL_FORM);
   const [poolLoading, setPoolLoading] = useState(false);
   const [poolResult, setPoolResult] = useState<string | null>(null);
+  const [poolPreflight, setPoolPreflight] = useState<PoolPreflight | null>(null);
+  const [poolPreflightLoading, setPoolPreflightLoading] = useState(false);
   const [isManualChainSwitching, setIsManualChainSwitching] = useState(false);
 
   const [configCheckResult, setConfigCheckResult] = useState<ConfigCheckResult | null>(null);
@@ -134,6 +137,98 @@ export function useTokenLaunchState() {
       setPoolForm((p) => ({ ...p, platformTokenAddress: contractAddresses.ACES_TOKEN }));
     }
   }, [contractAddresses.ACES_TOKEN, poolForm.platformTokenAddress]);
+
+  // Preflight: balances and allowances for pool launch (so user sees issues before clicking Launch)
+  useEffect(() => {
+    const tokenA = poolForm.tokenAddress?.trim();
+    const tokenB = (poolForm.platformTokenAddress?.trim() || contractAddresses.ACES_TOKEN)?.trim();
+    const amountAStr = poolForm.tokenAmount?.trim();
+    const amountBStr = poolForm.platformTokenAmount?.trim();
+    if (!tokenA || !tokenB || !amountAStr || !amountBStr || !wagmiSigner) {
+      setPoolPreflight(null);
+      return;
+    }
+    let amountA: ethers.BigNumber;
+    let amountB: ethers.BigNumber;
+    try {
+      amountA = ethers.utils.parseEther(amountAStr);
+      amountB = ethers.utils.parseEther(amountBStr);
+    } catch {
+      setPoolPreflight(null);
+      return;
+    }
+    if (amountA.isZero() || amountB.isZero()) {
+      setPoolPreflight(null);
+      return;
+    }
+    const addresses = getContractAddresses(currentChainId);
+    const launcherAddress = addresses.AERODROME_CL_POOL_LAUNCHER;
+    if (!launcherAddress || launcherAddress === '0x0000000000000000000000000000000000000000') {
+      setPoolPreflight(null);
+      return;
+    }
+    const erc20Abi = [
+      'function balanceOf(address account) external view returns (uint256)',
+      'function allowance(address owner, address spender) external view returns (uint256)',
+    ];
+    setPoolPreflightLoading(true);
+    const tokenAContract = new ethers.Contract(tokenA, erc20Abi, wagmiSigner);
+    const tokenBContract = new ethers.Contract(tokenB, erc20Abi, wagmiSigner);
+    wagmiSigner
+      .getAddress()
+      .then((userAddress) =>
+        Promise.all([
+          tokenAContract.balanceOf(userAddress),
+          tokenBContract.balanceOf(userAddress),
+          tokenAContract.allowance(userAddress, launcherAddress),
+          tokenBContract.allowance(userAddress, launcherAddress),
+        ]),
+      )
+      .then(([balanceA, balanceB, allowanceA, allowanceB]) => {
+        const balanceOk = balanceA.gte(amountA) && balanceB.gte(amountB);
+        const allowanceOk = allowanceA.gte(amountA) && allowanceB.gte(amountB);
+        const messages: string[] = [];
+        if (!balanceA.gte(amountA))
+          messages.push(
+            `Token A: insufficient balance (have ${ethers.utils.formatEther(balanceA)}, need ${ethers.utils.formatEther(amountA)})`,
+          );
+        if (!balanceB.gte(amountB))
+          messages.push(
+            `Token B: insufficient balance (have ${ethers.utils.formatEther(balanceB)}, need ${ethers.utils.formatEther(amountB)})`,
+          );
+        if (!allowanceA.gte(amountA))
+          messages.push(
+            `Token A: launcher not approved (allowance ${ethers.utils.formatEther(allowanceA)}). We will request approval when you launch.`,
+          );
+        if (!allowanceB.gte(amountB))
+          messages.push(
+            `Token B: launcher not approved (allowance ${ethers.utils.formatEther(allowanceB)}). We will request approval when you launch.`,
+          );
+        setPoolPreflight({
+          tokenA,
+          tokenB,
+          amountA: amountA.toString(),
+          amountB: amountB.toString(),
+          balanceA: balanceA.toString(),
+          balanceB: balanceB.toString(),
+          allowanceA: allowanceA.toString(),
+          allowanceB: allowanceB.toString(),
+          balanceOk,
+          allowanceOk,
+          messages,
+        });
+      })
+      .catch(() => setPoolPreflight(null))
+      .finally(() => setPoolPreflightLoading(false));
+  }, [
+    poolForm.tokenAddress,
+    poolForm.platformTokenAddress,
+    poolForm.tokenAmount,
+    poolForm.platformTokenAmount,
+    contractAddresses.ACES_TOKEN,
+    currentChainId,
+    wagmiSigner,
+  ]);
 
   useEffect(() => {
     const create2DeployerAddress = (contractAddresses as { CREATE2_DEPLOYER?: string })
@@ -396,45 +491,68 @@ export function useTokenLaunchState() {
             creatorBalance: creatorBalance.toString(),
             decimals: decimals.toString(),
           };
-          if (!isMintedCorrectly) {
-            alert(
-              `⚠️ Token deployed but minting verification failed!\n\nTotal Supply: ${ethers.utils.formatEther(totalSupply)} (expected: 1,000,000,000)\nCreator Balance: ${ethers.utils.formatEther(creatorBalance)}\nName: ${onChainName}\nSymbol: ${onChainSymbol}\n\nPlease verify the token on BaseScan before proceeding.`,
-            );
-          } else {
+          if (isMintedCorrectly) {
             verificationSuccess = true;
-            try {
-              const token = await getAccessToken();
-              if (token) {
-                const dbResult = await AdminApi.createTokenInDatabase(
-                  {
-                    contractAddress: result.tokenAddress,
-                    symbol: onChainSymbol,
-                    name: onChainName,
-                    chainId: currentChainId,
-                    totalSupply: totalSupply.toString(),
-                    decimals: decimals.toString(),
-                    isFixedSupply: true,
-                  },
-                  token,
-                );
-                if (dbResult.success) {
-                  dbSaveSuccess = true;
-                } else {
-                  throw new Error(dbResult.message || 'Database save failed');
-                }
-              } else {
-                throw new Error('Authentication token not available');
-              }
-            } catch (dbError) {
-              alert(
-                `Token deployed and verified but failed to save to database.\n\nToken Address: ${result.tokenAddress}\nError: ${dbError instanceof Error ? dbError.message : 'Unknown error'}\n\nPlease save this token manually.`,
+          } else {
+            alert(
+              `⚠️ Token deployed but minting verification failed!\n\nTotal Supply: ${ethers.utils.formatEther(totalSupply)} (expected: 1,000,000,000)\nCreator Balance: ${ethers.utils.formatEther(creatorBalance)}\nName: ${onChainName}\nSymbol: ${onChainSymbol}\n\nAttempting to save to database so it appears in the platform.`,
+            );
+          }
+          // Always try to save to DB (and thus Convex) when we have on-chain data, so the token
+          // is not lost even if verification flags a mismatch.
+          try {
+            const token = await getAccessToken();
+            if (token) {
+              const dbResult = await AdminApi.createTokenInDatabase(
+                {
+                  contractAddress: result.tokenAddress,
+                  symbol: onChainSymbol,
+                  name: onChainName,
+                  chainId: currentChainId,
+                  totalSupply: totalSupply.toString(),
+                  decimals: decimals.toString(),
+                  isFixedSupply: true,
+                },
+                token,
               );
+              if (dbResult.success) {
+                dbSaveSuccess = true;
+              } else {
+                throw new Error(dbResult.message || 'Database save failed');
+              }
+            } else {
+              throw new Error('Authentication token not available');
             }
+          } catch (dbError) {
+            alert(
+              `Token deployed but failed to save to database.\n\nToken Address: ${result.tokenAddress}\nError: ${dbError instanceof Error ? dbError.message : 'Unknown error'}\n\nPlease save this token manually.`,
+            );
           }
         } catch (verifyError) {
           alert(
-            `Token deployed but verification failed!\n\nToken Address: ${result.tokenAddress}\nError: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`,
+            `Token deployed but verification failed (RPC may still be indexing).\n\nToken Address: ${result.tokenAddress}\nError: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}\n\nAttempting to save to database using form data.`,
           );
+          // Save to DB using form data when on-chain read failed (e.g. RPC lag after factory deploy)
+          try {
+            const token = await getAccessToken();
+            if (token) {
+              const dbResult = await AdminApi.createTokenInDatabase(
+                {
+                  contractAddress: result.tokenAddress,
+                  symbol: createForm.symbol,
+                  name: createForm.name,
+                  chainId: currentChainId,
+                  totalSupply: '1000000000000000000000000000', // 1e27 wei = 1B tokens
+                  decimals: '18',
+                  isFixedSupply: true,
+                },
+                token,
+              );
+              if (dbResult.success) dbSaveSuccess = true;
+            }
+          } catch (dbErr) {
+            console.error('DB save after verification failure:', dbErr);
+          }
         }
         const newToken: CreatedToken = {
           address: result.tokenAddress,
@@ -634,13 +752,9 @@ export function useTokenLaunchState() {
     try {
       setPoolLoading(true);
       setPoolResult(null);
-      const {
-        launchCLPool,
-        setLockerBribeableShare,
-        MAX_BPS,
-        encodeSqrtPriceX96,
-        getCLPoolAddress,
-      } = await import('@/lib/contracts/aerodrome-locker');
+      const { launchCLPool, encodeSqrtPriceX96, getCLPoolAddress } = await import(
+        '@/lib/contracts/aerodrome-locker'
+      );
       const addresses = getContractAddresses(currentChainId);
       const launcherAddress = addresses.AERODROME_CL_POOL_LAUNCHER;
       if (!launcherAddress || launcherAddress === '0x0000000000000000000000000000000000000000') {
@@ -648,7 +762,10 @@ export function useTokenLaunchState() {
           'CLPoolLauncher address not configured for this network. Set NEXT_PUBLIC_AERODROME_CL_POOL_LAUNCHER_*.',
         );
       }
-      const tickSpacingNum = parseInt(poolForm.tickSpacing, 10) || 60;
+      // Default to 2% fee tier (tick spacing 500) for Base mainnet launches.
+      const parsedTickSpacing = Number.parseInt(poolForm.tickSpacing, 10);
+      const tickSpacingNum =
+        Number.isFinite(parsedTickSpacing) && parsedTickSpacing > 0 ? parsedTickSpacing : 500;
       setLoading('Checking if pool already exists...');
       const existingPool = await getCLPoolAddress(tokenA, tokenB, tickSpacingNum, currentChainId);
       if (existingPool && existingPool !== ethers.constants.AddressZero) {
@@ -661,30 +778,41 @@ export function useTokenLaunchState() {
       const erc20Abi = [
         'function approve(address spender, uint256 amount) external returns (bool)',
         'function allowance(address owner, address spender) external view returns (uint256)',
+        'function balanceOf(address account) external view returns (uint256)',
       ];
       const tokenAContract = new ethers.Contract(tokenA, erc20Abi, wagmiSigner);
       const tokenBContract = new ethers.Contract(tokenB, erc20Abi, wagmiSigner);
       const userAddress = await wagmiSigner.getAddress();
-      setLoading('Checking token allowances...');
-      const [allowanceA, allowanceB] = await Promise.all([
+      setLoading('Checking balances and allowances...');
+      const [balanceA, balanceB, allowanceA, allowanceB] = await Promise.all([
+        tokenAContract.balanceOf(userAddress),
+        tokenBContract.balanceOf(userAddress),
         tokenAContract.allowance(userAddress, launcherAddress),
         tokenBContract.allowance(userAddress, launcherAddress),
       ]);
+      if (balanceA.lt(amountA)) {
+        throw new Error(
+          `Insufficient Token A balance. You have ${ethers.utils.formatEther(balanceA)}, need ${ethers.utils.formatEther(amountA)}. Add more tokens to your wallet before launching.`,
+        );
+      }
+      if (balanceB.lt(amountB)) {
+        throw new Error(
+          `Insufficient Token B balance. You have ${ethers.utils.formatEther(balanceB)}, need ${ethers.utils.formatEther(amountB)}. Add more tokens to your wallet before launching.`,
+        );
+      }
       const approveAmount = ethers.constants.MaxUint256;
       const needsApprovalA = allowanceA.lt(amountA);
       const needsApprovalB = allowanceB.lt(amountB);
       if (needsApprovalA || needsApprovalB) {
-        setLoading('Approving tokens for launcher...');
+        setLoading('Approving tokens for launcher (required for launch)...');
         const approvals: Promise<unknown>[] = [];
         if (needsApprovalA) approvals.push(tokenAContract.approve(launcherAddress, approveAmount));
         if (needsApprovalB) approvals.push(tokenBContract.approve(launcherAddress, approveAmount));
         await Promise.all(approvals);
       }
       setLoading('Launching CL pool (create pool + add liquidity + lock)...');
-      const lockDurationDays = parseInt(poolForm.lockDuration, 10) || 0;
-      const lockDurationSeconds = poolForm.permanentLock
-        ? 0xffffffff
-        : lockDurationDays * 24 * 60 * 60;
+      // Hardcoded: 60-day lock
+      const lockDurationSeconds = 60 * 24 * 60 * 60;
       const poolLauncherIsToken0 = tokenA.toLowerCase() < tokenB.toLowerCase();
       const amountToken0 = poolLauncherIsToken0 ? amountA : amountB;
       const amountToken1 = poolLauncherIsToken0 ? amountB : amountA;
@@ -703,6 +831,9 @@ export function useTokenLaunchState() {
             maxPriorityFeePerGas: ethers.utils.parseUnits('0.5', 'gwei'),
           }
         : undefined;
+      // Note: poolForm.beneficiary and beneficiaryShare are not passed to the contract. The
+      // deployed Aerodrome CLPoolLauncher calls LockerFactory.lock(..., address(0), 0, 10_000, ...)
+      // and has no parameters for beneficiary. The Locker has no setBeneficiary() after creation.
       const result = await launchCLPool(
         wagmiSigner,
         {
@@ -724,25 +855,6 @@ export function useTokenLaunchState() {
         currentChainId,
         launchOptions,
       );
-      if (
-        result.lockerAddress &&
-        result.lockerAddress !== '0x0000000000000000000000000000000000000000'
-      ) {
-        const bribeBps = Math.min(MAX_BPS, Math.max(0, parseInt(poolForm.bribeableShare, 10) || 0));
-        if (bribeBps > 0) {
-          setLoading('Setting bribeable share on locker...');
-          try {
-            await setLockerBribeableShare(
-              wagmiSigner,
-              result.lockerAddress,
-              bribeBps,
-              currentChainId,
-            );
-          } catch (e) {
-            console.warn('Could not set bribeable share:', e);
-          }
-        }
-      }
       let poolSavedToDb = false;
       try {
         const token = await getAdminAccessToken();
@@ -1031,6 +1143,8 @@ export function useTokenLaunchState() {
     setPoolForm,
     poolLoading,
     poolResult,
+    poolPreflight,
+    poolPreflightLoading,
     isManualChainSwitching,
     chainSwitchFeedback,
     setChainSwitchFeedback,

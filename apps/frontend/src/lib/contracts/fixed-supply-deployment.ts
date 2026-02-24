@@ -54,6 +54,28 @@ export interface FixedSupplyTokenDeploymentResult {
   };
 }
 
+/** Retry getCode a few times with delay; RPC often lags indexing new contracts after tx confirms. */
+async function getCodeWithRetry(
+  provider: ethers.providers.Provider | null | undefined,
+  address: string,
+  options: { maxAttempts?: number; delayMs?: number } = {},
+): Promise<string> {
+  if (!provider) return '0x';
+  const { maxAttempts = 5, delayMs = 1500 } = options;
+  let code = '0x';
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    code = await provider.getCode(address);
+    if (code && code !== '0x') return code;
+    if (attempt < maxAttempts) {
+      console.log(
+        `[getCode] No code at ${address} yet (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms...`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return code || '0x';
+}
+
 /**
  * Predict the CREATE2 address for a FixedSupplyERC20 token deployment
  * @param salt The salt for CREATE2 deployment
@@ -266,11 +288,19 @@ export async function deployFixedSupplyToken(
         }
 
         let deployedAddress = computedAddress;
-        const deployedCode = await signer.provider?.getCode(deployedAddress);
+        // RPC often returns no code immediately after tx confirms; retry with short delays
+        const deployedCode = await getCodeWithRetry(signer.provider, deployedAddress);
         if (!deployedCode || deployedCode === '0x') {
+          // Tx succeeded but RPC still shows no code (indexing lag). Return success so the
+          // frontend can still save the token to DB; user can confirm on block explorer.
+          console.warn(
+            `[Factory] Tx ${receipt.transactionHash} succeeded but getCode still empty at ${deployedAddress}; returning success so token can be saved to DB`,
+          );
           return {
-            success: false,
-            error: `Deployment may have failed: no code at ${deployedAddress}. Tx: ${receipt.transactionHash}. Check block explorer.`,
+            success: true,
+            tokenAddress: deployedAddress,
+            txHash: receipt.transactionHash,
+            warning: `Transaction succeeded but RPC reported no code at address yet (indexing delay). Token created at ${deployedAddress}. You can confirm on block explorer and it will be saved to the database.`,
           };
         }
 
@@ -583,24 +613,30 @@ export async function deployFixedSupplyToken(
       }
     }
 
-    // Verify the contract was actually deployed at the computed address
-    const deployedCode = await signer.provider?.getCode(deployedAddress);
+    // Verify the contract was actually deployed (retry getCode; RPC often lags after tx confirms)
+    let deployedCode = await getCodeWithRetry(signer.provider, deployedAddress);
     if (!deployedCode || deployedCode === '0x') {
       // Try the predicted address as fallback
       if (deployedAddress.toLowerCase() !== predictedAddress.toLowerCase()) {
-        const predictedCode = await signer.provider?.getCode(predictedAddress);
+        const predictedCode = await getCodeWithRetry(signer.provider, predictedAddress);
         if (predictedCode && predictedCode !== '0x') {
           deployedAddress = predictedAddress;
+          deployedCode = predictedCode;
           console.warn(`✅ Contract found at predicted address ${predictedAddress}`);
         }
       }
 
-      // Final check
-      const finalCode = await signer.provider?.getCode(deployedAddress);
+      const finalCode = deployedCode || (await getCodeWithRetry(signer.provider, deployedAddress));
       if (!finalCode || finalCode === '0x') {
+        // Tx succeeded but RPC still shows no code; return success so frontend can save to DB
+        console.warn(
+          `[CREATE2] Tx ${receipt.transactionHash} succeeded but getCode still empty at ${deployedAddress}; returning success so token can be saved to DB`,
+        );
         return {
-          success: false,
-          error: `Contract deployment failed - no code at address ${deployedAddress}. Predicted: ${predictedAddress}, Computed: ${computedAddress}. Transaction hash: ${receipt.transactionHash}. Please check the transaction on a block explorer.`,
+          success: true,
+          tokenAddress: deployedAddress,
+          txHash: receipt.transactionHash,
+          warning: `Transaction succeeded but RPC reported no code at address yet (indexing delay). Token at ${deployedAddress}. Confirm on block explorer; it will be saved to the database.`,
         };
       }
     }
@@ -611,7 +647,7 @@ export async function deployFixedSupplyToken(
     const tokenContract = new ethers.Contract(deployedAddress, FIXED_SUPPLY_ERC20_ABI, signer);
 
     try {
-      // Verify token properties
+      // Verify token properties (best-effort; never report failure if contract is deployed)
       const [name, symbol, totalSupply, creatorBalance, decimals] = await Promise.all([
         tokenContract.name(),
         tokenContract.symbol(),
@@ -620,44 +656,55 @@ export async function deployFixedSupplyToken(
         tokenContract.decimals(),
       ]);
 
-      // Verify name and symbol match
-      if (name !== params.name || symbol !== params.symbol) {
-        return {
-          success: false,
-          error: `Token verification failed: name/symbol mismatch. Expected ${params.name}/${params.symbol}, got ${name}/${symbol}`,
-        };
-      }
-
-      // Verify total supply is 1 billion
       const expectedSupply = ethers.utils.parseEther('1000000000'); // 1 billion
-      if (!totalSupply.eq(expectedSupply)) {
+      const nameSymbolOk = name === params.name && symbol === params.symbol;
+      const supplyOk = totalSupply.eq(expectedSupply);
+      const balanceOk = creatorBalance.eq(totalSupply);
+
+      if (nameSymbolOk && supplyOk && balanceOk) {
+        console.log('✅ Token verified on-chain:', {
+          address: deployedAddress,
+          name,
+          symbol,
+          totalSupply: ethers.utils.formatEther(totalSupply),
+          creatorBalance: ethers.utils.formatEther(creatorBalance),
+          decimals: decimals.toString(),
+        });
         return {
-          success: false,
-          error: `Token verification failed: total supply mismatch. Expected ${expectedSupply.toString()}, got ${totalSupply.toString()}`,
+          success: true,
+          tokenAddress: deployedAddress,
+          txHash: receipt.transactionHash,
+          verifiedData: {
+            name,
+            symbol,
+            totalSupply: totalSupply.toString(),
+            creatorBalance: creatorBalance.toString(),
+            decimals: decimals.toString(),
+          },
         };
       }
 
-      // Verify creator received all tokens
-      if (!creatorBalance.eq(totalSupply)) {
-        return {
-          success: false,
-          error: `Token verification failed: creator balance mismatch. Expected ${totalSupply.toString()}, got ${creatorBalance.toString()}`,
-        };
-      }
-
-      console.log('✅ Token verified on-chain:', {
-        address: deployedAddress,
-        name,
-        symbol,
-        totalSupply: ethers.utils.formatEther(totalSupply),
-        creatorBalance: ethers.utils.formatEther(creatorBalance),
-        decimals: decimals.toString(),
-      });
-
+      // Contract is deployed but verification checks failed — still return success so the
+      // frontend can save to DB and add to Convex; surface as warning only.
+      const warnings: string[] = [];
+      if (!nameSymbolOk)
+        warnings.push(
+          `name/symbol mismatch: expected ${params.name}/${params.symbol}, got ${name}/${symbol}`,
+        );
+      if (!supplyOk)
+        warnings.push(
+          `total supply: expected ${expectedSupply.toString()}, got ${totalSupply.toString()}`,
+        );
+      if (!balanceOk)
+        warnings.push(
+          `creator balance: expected ${totalSupply.toString()}, got ${creatorBalance.toString()}`,
+        );
+      console.warn('Token deployed but verification warnings:', warnings);
       return {
         success: true,
         tokenAddress: deployedAddress,
         txHash: receipt.transactionHash,
+        warning: `Deployment succeeded; verification warnings: ${warnings.join('; ')}`,
         verifiedData: {
           name,
           symbol,

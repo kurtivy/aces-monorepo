@@ -150,9 +150,22 @@ export async function GET(
         .getPrices()
         .catch(() => null);
 
-      // Run decimals and DB lookup in parallel
-      const [rawDecimalsResult, token] = await Promise.all([
+      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+
+      // Run decimals + pool address lookup in parallel. Convex first, then Prisma.
+      const [rawDecimalsResult, convexToken, prismaToken] = await Promise.all([
         tokenContract.decimals(),
+        convexUrl
+          ? import('convex/nextjs').then(({ fetchQuery }) =>
+              import('convex/_generated/api').then(({ api }) =>
+                fetchQuery(
+                  api.tokens.getByContractAddress,
+                  { contractAddress: normalizedToken },
+                  { url: convexUrl },
+                ).catch(() => null),
+              ),
+            )
+          : Promise.resolve(null),
         prisma.token.findUnique({
           where: { contractAddress: normalizedToken },
           select: { poolAddress: true },
@@ -184,7 +197,8 @@ export async function GET(
         amountInRaw = ethers.utils.parseUnits(amountStr, assetConfig.decimals);
       }
 
-      const knownPoolAddress = token?.poolAddress || undefined;
+      // Convex first, then Prisma for pool address
+      const knownPoolAddress = convexToken?.poolAddress ?? prismaToken?.poolAddress ?? undefined;
 
       // Fetch pool state (single RPC path when knownPoolAddress is set)
       const tokenPool = await service.getPoolState(normalizedToken, knownPoolAddress);
@@ -196,7 +210,42 @@ export async function GET(
       let routePath: string[] = [];
       const routes: Array<{ from: string; to: string; stable: boolean }> = [];
 
-      if (isSellMode) {
+      let usedSlipstreamQuote = false;
+      if (knownPoolAddress && !tokenPool) {
+        const { getSlipstreamQuote } = await import('@/lib/services/slipstream-quote');
+        const tokenIn = isSellMode ? normalizedToken : assetMetadata.ACES.address;
+        const tokenOut = isSellMode ? assetMetadata.ACES.address : normalizedToken;
+        const clOut = await getSlipstreamQuote(
+          provider,
+          knownPoolAddress,
+          tokenIn,
+          tokenOut,
+          amountInRaw,
+          8453,
+        );
+        if (clOut != null && !clOut.isZero()) {
+          expectedOutputRaw = clOut;
+          outputDecimals = isSellMode ? 18 : tokenDecimals;
+          outputSymbol = isSellMode ? 'ACES' : 'TOKEN';
+          routePath = isSellMode
+            ? [normalizedToken, assetMetadata.ACES.address]
+            : [assetMetadata.ACES.address, normalizedToken];
+          routes.push({ from: routePath[0], to: routePath[1], stable: false });
+          usedSlipstreamQuote = true;
+        } else {
+          console.warn(
+            '[DEX Quote] Pool address known but getPoolState returned null and Slipstream quote failed for',
+            normalizedToken,
+            'pool:',
+            knownPoolAddress,
+          );
+          throw new Error(
+            'Pool not supported: may be Aerodrome Slipstream (V3). Quote API supports classic V2 AMM pools only.',
+          );
+        }
+      }
+
+      if (!usedSlipstreamQuote && isSellMode) {
         // Selling launchpad token for ACES - reuse tokenPool when available to avoid duplicate RPC
         const tokenToAces = tokenPool
           ? {
@@ -276,7 +325,7 @@ export async function GET(
             stable: wethToAces.stable,
           });
         }
-      } else if (assetConfig!.symbol === 'ACES') {
+      } else if (!usedSlipstreamQuote && assetConfig!.symbol === 'ACES') {
         // Buying launchpad token with ACES - reuse tokenPool when available to avoid duplicate RPC
         const directAcesToToken = tokenPool
           ? {
@@ -360,7 +409,7 @@ export async function GET(
             stable: wethToToken.stable,
           });
         }
-      } else if (assetConfig!.symbol === 'ETH') {
+      } else if (!usedSlipstreamQuote && assetConfig!.symbol === 'ETH') {
         // Buying with ETH/WETH
         const wethToToken = await service.getPairReserves(
           assetMetadata.ETH.address,
@@ -440,7 +489,10 @@ export async function GET(
             stable: acesToToken.stable,
           });
         }
-      } else if (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT') {
+      } else if (
+        !usedSlipstreamQuote &&
+        (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT')
+      ) {
         // Buying with USDC/USDT - simplified routing through WETH
         const stableToWeth = await service.getPairReserves(
           assetConfig!.address,
@@ -592,6 +644,9 @@ export async function GET(
           { success: false, error: 'Route pool not found' },
           { status: 404 },
         );
+      }
+      if (errorMessage.includes('Pool not supported') || errorMessage.includes('Slipstream (V3)')) {
+        return NextResponse.json({ success: false, error: errorMessage }, { status: 404 });
       }
 
       return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });

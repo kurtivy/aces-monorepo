@@ -84,14 +84,29 @@ export const INITIAL_POOL_FORM: PoolForm = {
   stable: false,
   tokenAmount: '10000000',
   platformTokenAmount: '1000',
-  lockDuration: '0',
+  lockDuration: '60',
   permanentLock: false,
   beneficiary: '',
-  beneficiaryShare: '0',
-  bribeableShare: '500',
-  tickSpacing: '200',
+  beneficiaryShare: '5000',
+  bribeableShare: '0',
+  tickSpacing: '500',
   skipSimulation: false,
 };
+
+/** Preflight check for pool launch: balances and allowances for both tokens. */
+export interface PoolPreflight {
+  tokenA: string;
+  tokenB: string;
+  amountA: string;
+  amountB: string;
+  balanceA: string;
+  balanceB: string;
+  allowanceA: string;
+  allowanceB: string;
+  balanceOk: boolean;
+  allowanceOk: boolean;
+  messages: string[];
+}
 
 export interface FixedSupplyDeployment {
   create2DeployerAddress: string;

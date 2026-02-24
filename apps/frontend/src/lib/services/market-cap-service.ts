@@ -185,15 +185,35 @@ export class MarketCapService {
   }
 
   /**
-   * Get pool address for a token
+   * Get pool address for a token (Convex first, then Prisma).
    */
   private async getTokenPoolAddress(tokenAddress: string): Promise<string | null> {
     try {
-      const token = await this.prisma.token.findUnique({
-        where: { contractAddress: tokenAddress.toLowerCase() },
-      });
+      const normalized = tokenAddress.toLowerCase();
+      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 
-      return token?.poolAddress || null;
+      if (convexUrl) {
+        try {
+          const { fetchQuery } = await import('convex/nextjs');
+          const { api } = await import('convex/_generated/api');
+          const convexToken = await fetchQuery(
+            api.tokens.getByContractAddress,
+            { contractAddress: normalized },
+            { url: convexUrl },
+          );
+          if (convexToken?.poolAddress) {
+            return convexToken.poolAddress;
+          }
+        } catch (e) {
+          console.warn('[MarketCapService] Convex pool address lookup failed:', e);
+        }
+      }
+
+      const token = await this.prisma.token.findUnique({
+        where: { contractAddress: normalized },
+        select: { poolAddress: true },
+      });
+      return token?.poolAddress ?? null;
     } catch (error) {
       console.error('[MarketCapService] Error getting pool address:', error);
       return null;

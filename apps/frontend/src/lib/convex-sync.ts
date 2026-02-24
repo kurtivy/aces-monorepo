@@ -160,6 +160,7 @@ export type TokenForConvex = {
   decimals?: number;
   listingId?: string | null;
   isActive: boolean;
+  poolAddress?: string | null;
 };
 
 /**
@@ -181,6 +182,7 @@ export async function syncTokenToConvex(token: TokenForConvex): Promise<void> {
       decimals: token.decimals,
       listingId: token.listingId ?? undefined,
       isActive: token.isActive,
+      poolAddress: token.poolAddress ?? undefined,
     });
   } catch (err) {
     console.error('[Convex] syncTokenToConvex failed:', err);
