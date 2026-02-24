@@ -12,6 +12,7 @@ import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as canvasItems from "../canvasItems.js";
 import type * as http from "../http.js";
+import type * as listings from "../listings.js";
 import type * as tokens from "../tokens.js";
 import type * as users from "../users.js";
 
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   canvasItems: typeof canvasItems;
   http: typeof http;
+  listings: typeof listings;
   tokens: typeof tokens;
   users: typeof users;
 }>;
