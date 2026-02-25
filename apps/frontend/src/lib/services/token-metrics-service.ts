@@ -63,18 +63,18 @@ export class TokenMetricsService {
       return cached.data;
     }
 
-    // Fetch token data
+    // Fetch pool address (Convex-first, Prisma fallback)
+    const poolAddress = await this.getTokenPoolAddress(tokenAddress);
+
+    // Fetch token metadata for fee calculation
     const token = await this.prisma.token.findUnique({
       where: { contractAddress: tokenAddress.toLowerCase() },
       select: {
-        poolAddress: true,
         dexLiveAt: true,
         phase: true,
         priceSource: true,
       },
-    });
-
-    const poolAddress = token?.poolAddress || undefined;
+    }).catch(() => null);
 
     // Get ACES/USD price
     const priceService = getPriceCacheService();
@@ -111,6 +111,8 @@ export class TokenMetricsService {
       } catch (error) {
         console.warn('[TokenMetricsService] Failed to calculate DEX fees:', error);
       }
+    } else if (!token?.dexLiveAt) {
+      console.warn('[TokenMetricsService] No dexLiveAt found for token, skipping fee calculation');
     }
 
     // Calculate DEX volume (24h)
@@ -229,6 +231,42 @@ export class TokenMetricsService {
     });
 
     return responseData;
+  }
+
+  /**
+   * Get pool address for a token (Convex-first, Prisma fallback)
+   */
+  private async getTokenPoolAddress(tokenAddress: string): Promise<string | undefined> {
+    try {
+      const normalized = tokenAddress.toLowerCase();
+      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+
+      if (convexUrl) {
+        try {
+          const { fetchQuery } = await import('convex/nextjs');
+          const { api } = await import('convex/_generated/api');
+          const convexToken = await fetchQuery(
+            api.tokens.getByContractAddress,
+            { contractAddress: normalized },
+            { url: convexUrl },
+          );
+          if (convexToken?.poolAddress) {
+            return convexToken.poolAddress;
+          }
+        } catch (e) {
+          console.warn('[TokenMetricsService] Convex pool address lookup failed:', e);
+        }
+      }
+
+      const token = await this.prisma.token.findUnique({
+        where: { contractAddress: normalized },
+        select: { poolAddress: true },
+      }).catch(() => null);
+      return token?.poolAddress ?? undefined;
+    } catch (error) {
+      console.error('[TokenMetricsService] Error getting pool address:', error);
+      return undefined;
+    }
   }
 
   /**
