@@ -235,7 +235,7 @@ const drawDaysLeft = (
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('LIVE', textX, textY);
+    ctx.fillText('UPCOMING', textX, textY);
     ctx.restore();
     return;
   }
@@ -387,7 +387,7 @@ export const drawArtGalleryCard = (
       ? featuredMetadata.title.slice(0, 22) + '…'
       : (featuredMetadata?.title ?? 'Illicit Collaboration');
   const line2Text = `"${shortTitle}"`;
-  const line3Text = isMobile ? 'v. Banksy x Chimp drop.' : 'v. Banksy x Chimp drop.';
+  const line3Text = isMobile ? 'v. Pikachu x Luigy drop.' : 'v. Pikachu x Luigy drop.';
   const line4Text = isLive ? `${displaySymbol} TOKEN LIVE` : 'UPCOMING';
 
   // --- Fonts (left-aligned + spacing) ---

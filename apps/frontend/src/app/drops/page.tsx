@@ -68,10 +68,19 @@ function getStaticUpcomingAssets(): UpcomingAsset[] {
 function DropsContentWithConvex() {
   const convexItems = useQuery(api.canvasItems.listForDrops);
   const upcomingAssets = useMemo<UpcomingAsset[]>(() => {
-    if (convexItems != null && convexItems.length > 0) {
-      return convexItems.map(convexDocToUpcomingAsset);
-    }
-    return getStaticUpcomingAssets();
+    const assets =
+      convexItems != null && convexItems.length > 0
+        ? convexItems.map(convexDocToUpcomingAsset)
+        : getStaticUpcomingAssets();
+
+    return [...assets].sort((a, b) => {
+      // Upcoming (comingSoon) items first, live items last
+      if (a.comingSoon !== b.comingSoon) return a.comingSoon ? -1 : 1;
+      // Within upcoming: soonest date first; within live: most recent date first
+      const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
+      const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
+      return a.comingSoon ? dateA - dateB : dateB - dateA;
+    });
   }, [convexItems]);
   return <DropsPageInner upcomingAssets={upcomingAssets} />;
 }
