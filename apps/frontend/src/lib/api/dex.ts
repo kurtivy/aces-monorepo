@@ -74,6 +74,9 @@ export interface DexQuoteResponse {
     usdc?: number;
     usdt?: number;
   };
+  isSlipstream?: boolean;
+  tickSpacing?: number;
+  poolAddress?: string;
 }
 
 export interface ApiSuccess<T> extends ApiResponse<T> {

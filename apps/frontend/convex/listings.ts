@@ -78,6 +78,45 @@ export const getBySymbol = query({
 });
 
 /**
+ * Get listing by Convex document _id.
+ */
+export const getByConvexId = query({
+  args: { _id: v.id('listings') },
+  handler: async (ctx, args) => {
+    const listing = await ctx.db.get(args._id);
+    if (!listing) return null;
+
+    // Join with token (if listingId matches)
+    const token = await ctx.db
+      .query('tokens')
+      .withIndex('by_listingId', (q) => q.eq('listingId', listing.id))
+      .first();
+
+    // Join with owner
+    const owner = await ctx.db
+      .query('appUsers')
+      .withIndex('by_stable_id', (q) => q.eq('id', listing.ownerId))
+      .first();
+
+    // Join with approvedBy user if exists
+    let approvedByUser = null;
+    if (listing.approvedBy) {
+      approvedByUser = await ctx.db
+        .query('appUsers')
+        .withIndex('by_stable_id', (q) => q.eq('id', listing.approvedBy!))
+        .first();
+    }
+
+    return {
+      listing,
+      token: token ?? null,
+      owner: owner ?? null,
+      approvedByUser: approvedByUser,
+    };
+  },
+});
+
+/**
  * Get listing by stable id.
  */
 export const getById = query({

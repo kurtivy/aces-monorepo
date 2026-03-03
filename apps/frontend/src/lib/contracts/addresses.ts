@@ -30,6 +30,7 @@ export const CONTRACT_ADDRESSES = {
     AERODROME_V2_LOCKER_FACTORY:
       process.env.NEXT_PUBLIC_AERODROME_V2_LOCKER_FACTORY_BASE_SEPOLIA || '',
     AERODROME_LOCKER: process.env.NEXT_PUBLIC_AERODROME_LOCKER_BASE_SEPOLIA || '',
+    AERODROME_CL_SWAP_ROUTER: process.env.NEXT_PUBLIC_AERODROME_CL_SWAP_ROUTER_BASE_SEPOLIA || '',
   },
   // Base Mainnet (Chain ID: 8453) - PRODUCTION
   baseMainnet: {
@@ -80,6 +81,9 @@ export const CONTRACT_ADDRESSES = {
     ACES_SWAP:
       process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_MAINNET ||
       '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest (multi-hop: ETH/USDC/USDT → ACES → RWA)
+    AERODROME_CL_SWAP_ROUTER:
+      process.env.NEXT_PUBLIC_AERODROME_CL_SWAP_ROUTER_BASE_MAINNET ||
+      '0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5', // Aerodrome Slipstream SwapRouter on Base Mainnet
   },
 } as const;
 

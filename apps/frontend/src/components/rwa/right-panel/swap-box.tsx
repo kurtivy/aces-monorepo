@@ -106,6 +106,11 @@ export default function TokenSwapInterface({
     [contractAddresses],
   );
 
+  const clSwapRouterAddress = useMemo(
+    () => (contractAddresses as Record<string, string> | undefined)?.AERODROME_CL_SWAP_ROUTER || '',
+    [contractAddresses],
+  );
+
   const factoryProxyAddress = useMemo(
     () => (contractAddresses as Record<string, string> | undefined)?.FACTORY_PROXY || '',
     [contractAddresses],
@@ -440,46 +445,9 @@ export default function TokenSwapInterface({
     return true;
   }, [amount]);
 
-  // Check token allowance for DEX router (needed for any ERC20 token)
-  // DEX mode only: approve AERODROME_ROUTER for all swaps
-  const getSpenderAddress = useCallback(() => {
-    return routerAddress;
-  }, [routerAddress]);
-
-  const tokenAllowance = useTokenAllowance({
-    tokenAddress: getTokenAddressForAsset(selectedSellAsset),
-    ownerAddress: walletAddress,
-    spenderAddress: getSpenderAddress() || null,
-    signer,
-    enabled: isERC20Token(selectedSellAsset) && hasValidAmount,
-  });
-
-  // Debug logging for allowance state
-  useEffect(() => {
-    if (isERC20Token(selectedSellAsset) && amount && amount !== '0') {
-      const assetInfo = getAssetBalanceInfo(selectedSellAsset);
-      void tokenAllowance.hasAllowance(amount, assetInfo.decimals);
-      // console.log('[SwapBox] Allowance Check:', {
-      //   mode: isDexMode ? 'DEX' : 'Bonding',
-      //   selectedSellAsset,
-      //   amount,
-      //   decimals: assetInfo.decimals,
-      //   allowance: tokenAllowance.allowance.toString(),
-      //   needsApproval,
-      //   allowanceLoading: tokenAllowance.loading,
-      //   allowanceError: tokenAllowance.error,
-      //   spender: getSpenderAddress(),
-      // });
-    }
-  }, [
-    isDexMode,
-    selectedSellAsset,
-    amount,
-    tokenAllowance,
-    isERC20Token,
-    getAssetBalanceInfo,
-    getSpenderAddress,
-  ]);
+  // Token allowance is declared after the quote hook so the spender
+  // can be derived from quote.isSlipstream (V2 Router vs CL SwapRouter).
+  // See below after useUnifiedQuote.
 
   // ========================================
   // UNIFIED LOGIC (Map UI state to sellToken/buyToken)
@@ -526,6 +494,23 @@ export default function TokenSwapInterface({
     tokenAddress: tokenAddress || '',
     routerAddress,
     isDexMode,
+  });
+
+  // ========================================
+  // TOKEN ALLOWANCE (after quote so we know the correct spender)
+  // ========================================
+  const isQuoteSlipstream = !!(quote.quote as any)?.isSlipstream;
+  const spenderAddress = useMemo(
+    () => (isQuoteSlipstream ? clSwapRouterAddress : routerAddress) || null,
+    [isQuoteSlipstream, clSwapRouterAddress, routerAddress],
+  );
+
+  const tokenAllowance = useTokenAllowance({
+    tokenAddress: getTokenAddressForAsset(selectedSellAsset),
+    ownerAddress: walletAddress,
+    spenderAddress,
+    signer,
+    enabled: isERC20Token(selectedSellAsset) && hasValidAmount,
   });
 
   const isOutputToken =
@@ -825,21 +810,19 @@ export default function TokenSwapInterface({
   // APPROVAL HANDLER (for DEX mode - any ERC20 token)
   // ========================================
   const handleApproveToken = useCallback(async () => {
-    const tokenAddress = getTokenAddressForAsset(selectedSellAsset);
+    const tokenAddr = getTokenAddressForAsset(selectedSellAsset);
 
-    // Get the correct spender based on mode and asset
-    const spender = getSpenderAddress();
-
-    if (!signer || !spender || !tokenAddress) {
+    if (!signer || !spenderAddress || !tokenAddr) {
       console.error('[SwapBox] Missing required data for approval', {
         hasSigner: !!signer,
-        hasSpender: !!spender,
-        tokenAddress,
+        hasSpender: !!spenderAddress,
+        tokenAddr,
         selectedSellAsset,
-        mode: isDexMode ? 'DEX' : 'Bonding',
       });
       return;
     }
+
+    const spender = spenderAddress;
 
     try {
       setLoading('Requesting approval...');
@@ -851,12 +834,12 @@ export default function TokenSwapInterface({
         ? ['function approve(address spender, uint256 amount)'] // No return type for USDT
         : ['function approve(address spender, uint256 amount) returns (bool)'];
 
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+      const tokenContract = new ethers.Contract(tokenAddr, ERC20_ABI, signer);
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
       debugLog(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval for Aerodrome...`, {
-        tokenAddress,
+        tokenAddr,
         spender,
         isUSDT,
       });
@@ -886,7 +869,7 @@ export default function TokenSwapInterface({
     }
   }, [
     signer,
-    getSpenderAddress,
+    spenderAddress,
     selectedSellAsset,
     getTokenAddressForAsset,
     tokenAllowance,
@@ -905,8 +888,8 @@ export default function TokenSwapInterface({
     if (dexError && /route pool not found/i.test(dexError)) {
       dexError = 'DEX pool not found. Please contact support.';
     }
-    if (dexError && /slipstream|v3.*amm|pool not supported/i.test(dexError)) {
-      dexError = 'This pool is Aerodrome Slipstream (V3). Quotes only work for classic AMM pools.';
+    if (dexError && /pool not found|pool not supported/i.test(dexError)) {
+      dexError = 'DEX pool not found. Please contact support.';
     }
     const nextMessage = minimumAmountWarning ?? dexError ?? null;
 

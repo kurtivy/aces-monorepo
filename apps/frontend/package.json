@@ -17,6 +17,7 @@
     "sync-tokens-to-convex": "tsx scripts/sync-tokens-to-convex.ts",
     "sync-all-to-convex": "tsx scripts/sync-all-to-convex.ts",
     "convex:sync-dev-to-prod": "bash sync-convex-dev-to-prod.sh",
+    "copy-listing-to-prod": "tsx scripts/copy-listing-dev-to-prod.ts",
     "reset-admin-password": "convex run admin:resetAdminPassword",
     "test-profile-holdings": "tsx scripts/test-profile-token-holdings.ts",
     "dev": "next dev -H 0.0.0.0",

@@ -64,6 +64,9 @@ export interface DexQuoteResponse {
   path: string[];
   routes?: Array<{ from: string; to: string; stable: boolean }>;
   priceImpact?: string;
+  isSlipstream?: boolean;
+  tickSpacing?: number;
+  poolAddress?: string;
   [key: string]: any;
 }
 

@@ -25,6 +25,9 @@ interface QuoteResponse {
     usdc?: number;
     usdt?: number;
   };
+  isSlipstream?: boolean;
+  tickSpacing?: number;
+  poolAddress?: string;
 }
 
 // Asset metadata
@@ -210,43 +213,188 @@ export async function GET(
       let routePath: string[] = [];
       const routes: Array<{ from: string; to: string; stable: boolean }> = [];
 
-      let usedSlipstreamQuote = false;
+      // Detect Slipstream (CL) pool when V2 pool state is unavailable
+      let isSlipstream = false;
+      let clTickSpacing: number | null = null;
       if (knownPoolAddress && !tokenPool) {
-        const { getSlipstreamQuote } = await import('@/lib/services/slipstream-quote');
-        const tokenIn = isSellMode ? normalizedToken : assetMetadata.ACES.address;
-        const tokenOut = isSellMode ? assetMetadata.ACES.address : normalizedToken;
-        const clOut = await getSlipstreamQuote(
-          provider,
-          knownPoolAddress,
-          tokenIn,
-          tokenOut,
-          amountInRaw,
-          8453,
-        );
-        if (clOut != null && !clOut.isZero()) {
-          expectedOutputRaw = clOut;
-          outputDecimals = isSellMode ? 18 : tokenDecimals;
-          outputSymbol = isSellMode ? 'ACES' : 'TOKEN';
-          routePath = isSellMode
-            ? [normalizedToken, assetMetadata.ACES.address]
-            : [assetMetadata.ACES.address, normalizedToken];
-          routes.push({ from: routePath[0], to: routePath[1], stable: false });
-          usedSlipstreamQuote = true;
-        } else {
+        const { detectSlipstreamPool } = await import('@/lib/services/slipstream-quote');
+        const detection = await detectSlipstreamPool(provider, knownPoolAddress);
+        isSlipstream = detection.isSlipstream;
+        clTickSpacing = detection.tickSpacing;
+        if (!isSlipstream) {
           console.warn(
-            '[DEX Quote] Pool address known but getPoolState returned null and Slipstream quote failed for',
+            '[DEX Quote] Pool address known but neither V2 nor CL for',
             normalizedToken,
             'pool:',
             knownPoolAddress,
           );
-          throw new Error(
-            'Pool not supported: may be Aerodrome Slipstream (V3). Quote API supports classic V2 AMM pools only.',
-          );
+          throw new Error('Pool not found or not supported');
         }
       }
 
-      if (!usedSlipstreamQuote && isSellMode) {
-        // Selling launchpad token for ACES - reuse tokenPool when available to avoid duplicate RPC
+      /**
+       * Helper: quote the TOKEN ↔ ACES leg through the CL (Slipstream) pool.
+       * Returns the output BigNumber or throws.
+       */
+      async function quoteSlipstreamLeg(
+        tokenIn: string,
+        tokenOut: string,
+        amountIn: ethers.BigNumber,
+      ): Promise<ethers.BigNumber> {
+        const { getSlipstreamQuote } = await import('@/lib/services/slipstream-quote');
+        const clResult = await getSlipstreamQuote(
+          provider,
+          knownPoolAddress!,
+          tokenIn,
+          tokenOut,
+          amountIn,
+          8453,
+        );
+        if (clResult && !clResult.amountOut.isZero()) {
+          if (clResult.tickSpacing != null) clTickSpacing = clResult.tickSpacing;
+          return clResult.amountOut;
+        }
+        throw new Error('Slipstream (CL) quote returned zero — pool may have insufficient liquidity');
+      }
+
+      // ================================================================
+      // SLIPSTREAM (CL) POOL ROUTING
+      // ================================================================
+      if (isSlipstream && isSellMode) {
+        // TOKEN → ACES via CL pool
+        expectedOutputRaw = await quoteSlipstreamLeg(
+          normalizedToken,
+          assetMetadata.ACES.address,
+          amountInRaw,
+        );
+        outputDecimals = 18;
+        outputSymbol = 'ACES';
+        routePath = [normalizedToken, assetMetadata.ACES.address];
+        routes.push({ from: normalizedToken, to: assetMetadata.ACES.address, stable: false });
+      } else if (isSlipstream && !isSellMode && assetConfig!.symbol === 'ACES') {
+        // ACES → TOKEN via CL pool
+        expectedOutputRaw = await quoteSlipstreamLeg(
+          assetMetadata.ACES.address,
+          normalizedToken,
+          amountInRaw,
+        );
+        outputDecimals = tokenDecimals;
+        outputSymbol = 'TOKEN';
+        routePath = [assetMetadata.ACES.address, normalizedToken];
+        routes.push({ from: assetMetadata.ACES.address, to: normalizedToken, stable: false });
+      } else if (isSlipstream && !isSellMode && assetConfig!.symbol === 'ETH') {
+        // ETH → ACES (V2) → TOKEN (CL)
+        const envAcesWeth = process.env.AERODROME_ACES_WETH_POOL || '';
+        const knownAcesWethPool = envAcesWeth ? envAcesWeth.toLowerCase() : undefined;
+        const wethToAces = await service.getPairReserves(
+          assetMetadata.ETH.address,
+          assetMetadata.ACES.address,
+          knownAcesWethPool,
+        );
+        if (!wethToAces) throw new Error('Route pool not found for ETH → ACES');
+
+        const acesAmountRaw = await quoteHop(
+          service,
+          wethToAces.poolAddress,
+          assetMetadata.ETH.address,
+          amountInRaw,
+          wethToAces.reserveIn,
+          wethToAces.reserveOut,
+        );
+        intermediateSteps.push({
+          symbol: 'ACES',
+          amount: ethers.utils.formatUnits(acesAmountRaw, assetMetadata.ACES.decimals),
+        });
+
+        expectedOutputRaw = await quoteSlipstreamLeg(
+          assetMetadata.ACES.address,
+          normalizedToken,
+          acesAmountRaw,
+        );
+        outputDecimals = tokenDecimals;
+        outputSymbol = 'TOKEN';
+        routePath = [assetMetadata.ETH.address, assetMetadata.ACES.address, normalizedToken];
+        routes.push({
+          from: assetMetadata.ETH.address,
+          to: assetMetadata.ACES.address,
+          stable: wethToAces.stable,
+        });
+        routes.push({ from: assetMetadata.ACES.address, to: normalizedToken, stable: false });
+      } else if (
+        isSlipstream &&
+        !isSellMode &&
+        (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT')
+      ) {
+        // USDC/USDT → WETH (V2) → ACES (V2) → TOKEN (CL)
+        const stableToWeth = await service.getPairReserves(
+          assetConfig!.address,
+          assetMetadata.ETH.address,
+        );
+        const envAcesWeth = process.env.AERODROME_ACES_WETH_POOL || '';
+        const knownAcesWethPool = envAcesWeth ? envAcesWeth.toLowerCase() : undefined;
+        const wethToAces = await service.getPairReserves(
+          assetMetadata.ETH.address,
+          assetMetadata.ACES.address,
+          knownAcesWethPool,
+        );
+        if (!stableToWeth || !wethToAces) throw new Error('Route pool not found');
+
+        const wethAmountRaw = await quoteHop(
+          service,
+          stableToWeth.poolAddress,
+          assetConfig!.address,
+          amountInRaw,
+          stableToWeth.reserveIn,
+          stableToWeth.reserveOut,
+        );
+        intermediateSteps.push({
+          symbol: 'wETH',
+          amount: ethers.utils.formatUnits(wethAmountRaw, assetMetadata.ETH.decimals),
+        });
+
+        const acesAmountRaw = await quoteHop(
+          service,
+          wethToAces.poolAddress,
+          assetMetadata.ETH.address,
+          wethAmountRaw,
+          wethToAces.reserveIn,
+          wethToAces.reserveOut,
+        );
+        intermediateSteps.push({
+          symbol: 'ACES',
+          amount: ethers.utils.formatUnits(acesAmountRaw, assetMetadata.ACES.decimals),
+        });
+
+        expectedOutputRaw = await quoteSlipstreamLeg(
+          assetMetadata.ACES.address,
+          normalizedToken,
+          acesAmountRaw,
+        );
+        outputDecimals = tokenDecimals;
+        outputSymbol = 'TOKEN';
+        routePath = [
+          assetConfig!.address,
+          assetMetadata.ETH.address,
+          assetMetadata.ACES.address,
+          normalizedToken,
+        ];
+        routes.push({
+          from: assetConfig!.address,
+          to: assetMetadata.ETH.address,
+          stable: stableToWeth.stable,
+        });
+        routes.push({
+          from: assetMetadata.ETH.address,
+          to: assetMetadata.ACES.address,
+          stable: wethToAces.stable,
+        });
+        routes.push({ from: assetMetadata.ACES.address, to: normalizedToken, stable: false });
+      }
+
+      // ================================================================
+      // V2 (CLASSIC AMM) POOL ROUTING
+      // ================================================================
+      else if (!isSlipstream && isSellMode) {
         const tokenToAces = tokenPool
           ? {
               poolAddress: tokenPool.poolAddress,
@@ -269,7 +417,7 @@ export async function GET(
             tokenToAces.reserveIn,
             tokenToAces.reserveOut,
           );
-          outputDecimals = 18; // ACES
+          outputDecimals = 18;
           outputSymbol = 'ACES';
           routePath = [normalizedToken, assetMetadata.ACES.address];
           routes.push({
@@ -278,7 +426,6 @@ export async function GET(
             stable: tokenToAces.stable,
           });
         } else {
-          // Fallback: TOKEN -> WETH -> ACES
           const tokenToWeth = await service.getPairReserves(
             normalizedToken,
             assetMetadata.ETH.address,
@@ -311,7 +458,7 @@ export async function GET(
             wethToAces.reserveIn,
             wethToAces.reserveOut,
           );
-          outputDecimals = 18; // ACES
+          outputDecimals = 18;
           outputSymbol = 'ACES';
           routePath = [normalizedToken, assetMetadata.ETH.address, assetMetadata.ACES.address];
           routes.push({
@@ -325,8 +472,7 @@ export async function GET(
             stable: wethToAces.stable,
           });
         }
-      } else if (!usedSlipstreamQuote && assetConfig!.symbol === 'ACES') {
-        // Buying launchpad token with ACES - reuse tokenPool when available to avoid duplicate RPC
+      } else if (!isSlipstream && assetConfig!.symbol === 'ACES') {
         const directAcesToToken = tokenPool
           ? {
               poolAddress: tokenPool.poolAddress,
@@ -358,7 +504,6 @@ export async function GET(
             stable: directAcesToToken.stable,
           });
         } else {
-          // Fallback: ACES -> WETH -> TOKEN
           const acesToWeth = await service.getPairReserves(
             assetMetadata.ACES.address,
             assetMetadata.ETH.address,
@@ -381,7 +526,6 @@ export async function GET(
             acesToWeth.reserveIn,
             acesToWeth.reserveOut,
           );
-
           intermediateSteps.push({
             symbol: 'wETH',
             amount: ethers.utils.formatUnits(wethAmountRaw, assetMetadata.ETH.decimals),
@@ -409,8 +553,7 @@ export async function GET(
             stable: wethToToken.stable,
           });
         }
-      } else if (!usedSlipstreamQuote && assetConfig!.symbol === 'ETH') {
-        // Buying with ETH/WETH
+      } else if (!isSlipstream && assetConfig!.symbol === 'ETH') {
         const wethToToken = await service.getPairReserves(
           assetMetadata.ETH.address,
           normalizedToken,
@@ -435,7 +578,6 @@ export async function GET(
             stable: wethToToken.stable,
           });
         } else {
-          // Fallback: WETH -> ACES -> TOKEN
           const envAcesWeth = process.env.AERODROME_ACES_WETH_POOL || '';
           const knownAcesWethPool = envAcesWeth ? envAcesWeth.toLowerCase() : undefined;
           const wethToAces = await service.getPairReserves(
@@ -461,7 +603,6 @@ export async function GET(
             wethToAces.reserveIn,
             wethToAces.reserveOut,
           );
-
           intermediateSteps.push({
             symbol: 'ACES',
             amount: ethers.utils.formatUnits(acesAmountRaw, assetMetadata.ACES.decimals),
@@ -490,10 +631,9 @@ export async function GET(
           });
         }
       } else if (
-        !usedSlipstreamQuote &&
+        !isSlipstream &&
         (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT')
       ) {
-        // Buying with USDC/USDT - simplified routing through WETH
         const stableToWeth = await service.getPairReserves(
           assetConfig!.address,
           assetMetadata.ETH.address,
@@ -516,7 +656,6 @@ export async function GET(
           stableToWeth.reserveIn,
           stableToWeth.reserveOut,
         );
-
         intermediateSteps.push({
           symbol: 'wETH',
           amount: ethers.utils.formatUnits(wethAmountRaw, assetMetadata.ETH.decimals),
@@ -586,13 +725,15 @@ export async function GET(
 
           const outputAmount = Number(ethers.utils.formatUnits(expectedOutputRaw, outputDecimals));
           if (outputSymbol === 'TOKEN') {
-            // Calculate TOKEN output USD value from its current price in ACES pool
-            // tokenPool.priceInCounter = ACES per TOKEN (how many ACES for 1 TOKEN)
+            // For V2 pools, use pool priceInCounter; for CL pools, derive from input/output amounts
             const tokenPriceInAces = tokenPool?.priceInCounter || 0;
 
-            // Output USD = (tokens received) * (token price in ACES) * (ACES price in USD)
-            // This correctly reflects the fee impact since expectedOutputRaw already has fees deducted
-            outputUsdValue = (outputAmount * tokenPriceInAces * acesUsdPrice!).toFixed(2);
+            if (tokenPriceInAces > 0) {
+              outputUsdValue = (outputAmount * tokenPriceInAces * acesUsdPrice!).toFixed(2);
+            } else if (inputUsdValue) {
+              // For CL pools without reserve-based pricing, approximate output USD from input USD
+              outputUsdValue = inputUsdValue;
+            }
           } else if (outputSymbol === 'ACES') {
             outputUsdValue = (outputAmount * acesUsdPrice!).toFixed(2);
           }
@@ -616,6 +757,11 @@ export async function GET(
         inputUsdValue,
         outputUsdValue,
         prices,
+        ...(isSlipstream && {
+          isSlipstream: true,
+          tickSpacing: clTickSpacing ?? undefined,
+          poolAddress: knownPoolAddress,
+        }),
       };
 
       return response;
@@ -645,7 +791,7 @@ export async function GET(
           { status: 404 },
         );
       }
-      if (errorMessage.includes('Pool not supported') || errorMessage.includes('Slipstream (V3)')) {
+      if (errorMessage.includes('Pool not found') || errorMessage.includes('Pool not supported')) {
         return NextResponse.json({ success: false, error: errorMessage }, { status: 404 });
       }
 
