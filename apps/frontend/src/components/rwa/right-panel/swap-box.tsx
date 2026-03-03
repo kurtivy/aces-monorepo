@@ -106,8 +106,8 @@ export default function TokenSwapInterface({
     [contractAddresses],
   );
 
-  const clSwapRouterAddress = useMemo(
-    () => (contractAddresses as Record<string, string> | undefined)?.AERODROME_CL_SWAP_ROUTER || '',
+  const permit2Address = useMemo(
+    () => (contractAddresses as Record<string, string> | undefined)?.PERMIT2 || '',
     [contractAddresses],
   );
 
@@ -501,8 +501,8 @@ export default function TokenSwapInterface({
   // ========================================
   const isQuoteSlipstream = !!(quote.quote as any)?.isSlipstream;
   const spenderAddress = useMemo(
-    () => (isQuoteSlipstream ? clSwapRouterAddress : routerAddress) || null,
-    [isQuoteSlipstream, clSwapRouterAddress, routerAddress],
+    () => (isQuoteSlipstream ? permit2Address : routerAddress) || null,
+    [isQuoteSlipstream, permit2Address, routerAddress],
   );
 
   const tokenAllowance = useTokenAllowance({

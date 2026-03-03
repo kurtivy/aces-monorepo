@@ -9,10 +9,15 @@ const AERODROME_ROUTER_ABI = [
   'function swapExactETHForTokens(uint256 amountOutMin, tuple(address from, address to, bool stable, address factory)[] routes, address to, uint256 deadline) payable returns (uint256[] memory amounts)',
 ];
 
-// Aerodrome Slipstream (CL) SwapRouter ABI
-const SLIPSTREAM_ROUTER_ABI = [
-  'function exactInputSingle(tuple(address tokenIn, address tokenOut, int24 tickSpacing, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)',
-  'function unwrapWETH9(uint256 amountMinimum, address recipient) external payable',
+// Aerodrome Universal Router ABI
+const UNIVERSAL_ROUTER_ABI = [
+  'function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline) external payable',
+];
+
+// Permit2 ABI (allowance-based, used by Universal Router)
+const PERMIT2_ABI = [
+  'function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)',
+  'function approve(address token, address spender, uint160 amount, uint48 expiration)',
 ];
 
 const WETH_ABI = [
@@ -22,12 +27,24 @@ const WETH_ABI = [
 
 // Aerodrome V2 Factory address on Base Mainnet
 const AERODROME_FACTORY = '0x420DD381b31aEf6683db6B902084cB0FFECe40Da';
-// WETH address on Base
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
+
+// Universal Router command: V3_SWAP_EXACT_IN = 0x00
+const V3_SWAP_EXACT_IN = 0x00;
+// Flag OR'd with tickSpacing to signal the second CL factory (CL Pool Launcher)
+const CL_FACTORY_2_FLAG = 0x100000;
+// Max uint160 for Permit2 unlimited approval
+const MAX_UINT160 = ethers.BigNumber.from(2).pow(160).sub(1);
+// Far-future expiration for Permit2 allowance (~136 years from epoch)
+const MAX_UINT48 = 2 ** 48 - 1;
 
 /**
  * Service for executing DEX swaps via Aerodrome router.
  * Supports both V2 (classic AMM) and Slipstream (CL) pools.
+ *
+ * Slipstream swaps use the Aerodrome Universal Router + Permit2 because
+ * the dedicated SwapRouter is wired to a different CL factory than the
+ * one used by the CL Pool Launcher.
  */
 export class DexSwapService {
   private routerContract: ethers.Contract;
@@ -55,7 +72,6 @@ export class DexSwapService {
         return { success: false, error: 'Invalid quote data' };
       }
 
-      // Route to Slipstream or V2 based on quote metadata
       if (quote.isSlipstream) {
         return await this.executeSlipstreamSwap(quote, paymentAsset, signer, onStatus);
       }
@@ -67,7 +83,7 @@ export class DexSwapService {
   }
 
   // ================================================================
-  // SLIPSTREAM (CL) SWAP
+  // SLIPSTREAM (CL) SWAP via Universal Router + Permit2
   // ================================================================
   private async executeSlipstreamSwap(
     quote: DexQuoteResponse,
@@ -75,60 +91,54 @@ export class DexSwapService {
     signer: ethers.Signer,
     onStatus?: StatusCallback,
   ): Promise<TransactionResult> {
-    const clRouterAddress =
-      (await import('@/lib/contracts/addresses')).getContractAddresses(8453).AERODROME_CL_SWAP_ROUTER;
-    if (!clRouterAddress) {
-      return { success: false, error: 'Slipstream SwapRouter address not configured' };
+    const addresses = (await import('@/lib/contracts/addresses')).getContractAddresses(8453);
+    const universalRouterAddress = addresses.AERODROME_UNIVERSAL_ROUTER;
+    const permit2Address = addresses.PERMIT2;
+
+    if (!universalRouterAddress || !permit2Address) {
+      return { success: false, error: 'Universal Router or Permit2 address not configured' };
     }
 
-    const clRouter = new ethers.Contract(clRouterAddress, SLIPSTREAM_ROUTER_ABI, signer);
     const deadline = Math.floor(Date.now() / 1000) + SWAP_DEADLINE_BUFFER_SECONDS;
+    const amountIn = ethers.BigNumber.from(quote.inputAmountRaw);
     const amountOutMin = ethers.BigNumber.from(quote.minOutputRaw);
-
     const path = (quote.path || []).map((addr: string) => addr.toLowerCase());
     const routes = quote.routes || [];
     const isMultiHop = path.length > 2;
-
-    // Find the CL leg (last route is always the CL leg for TOKEN ↔ ACES)
-    const clLegIndex = routes.length - 1;
-    const tickSpacing = quote.tickSpacing ?? 200;
+    const tickSpacing = quote.tickSpacing ?? 500;
 
     if (isMultiHop) {
-      // Multi-hop: V2 legs first, then CL leg
-      // e.g., ETH → ACES (V2) → TOKEN (CL) or USDC → WETH → ACES (V2) → TOKEN (CL)
       return await this.executeMultiHopSlipstreamSwap(
         quote,
         paymentAsset,
         signer,
-        clRouter,
+        universalRouterAddress,
+        permit2Address,
         tickSpacing,
         deadline,
         onStatus,
       );
     }
 
-    // Direct swap: ACES ↔ TOKEN via CL pool
-    const amountIn = ethers.BigNumber.from(quote.inputAmountRaw);
+    // Direct swap: ACES ↔ TOKEN via CL pool through Universal Router
+    const tokenIn = ethers.utils.getAddress(path[0]);
+    const tokenOut = ethers.utils.getAddress(path[path.length - 1]);
 
     if (paymentAsset === 'ETH') {
-      // ETH → TOKEN: wrap ETH to WETH first, then swap via CL
       return await this.executeETHToTokenCL(
-        clRouter,
         quote,
         amountIn,
         amountOutMin,
         tickSpacing,
         deadline,
         signer,
+        universalRouterAddress,
+        permit2Address,
         onStatus,
       );
     }
 
     // ERC20 → TOKEN or TOKEN → ACES via CL
-    const tokenIn = ethers.utils.getAddress(path[0]);
-    const tokenOut = ethers.utils.getAddress(path[path.length - 1]);
-
-    // Verify balance
     const erc20 = new ethers.Contract(tokenIn, ERC20_ABI, signer);
     const balance = await erc20.balanceOf(this.walletAddress);
     if (balance.lt(amountIn)) {
@@ -138,46 +148,58 @@ export class DexSwapService {
       };
     }
 
-    // Ensure allowance for CL SwapRouter
-    await this.ensureAllowance({
-      tokenAddress: tokenIn,
-      spenderAddress: clRouter.address,
-      amount: amountIn,
+    // Ensure ERC20 → Permit2 approval, then Permit2 → Universal Router allowance
+    onStatus?.('Checking approvals...');
+    await this.ensurePermit2Approval(tokenIn, permit2Address, amountIn, signer, onStatus);
+    await this.ensurePermit2Allowance(
+      tokenIn,
+      permit2Address,
+      universalRouterAddress,
       signer,
       onStatus,
-    });
+    );
 
     onStatus?.('Confirming swap...');
 
-    const swapParams = {
-      tokenIn,
-      tokenOut,
-      tickSpacing,
-      recipient: this.walletAddress,
-      deadline,
-      amountIn,
-      amountOutMinimum: amountOutMin,
-      sqrtPriceLimitX96: 0,
-    };
+    const universalRouter = new ethers.Contract(
+      universalRouterAddress,
+      UNIVERSAL_ROUTER_ABI,
+      signer,
+    );
 
-    // Simulate first
+    // Encode V3_SWAP_EXACT_IN
+    const encodedPath = this.encodeCLPath(tokenIn, tokenOut, tickSpacing);
+    const swapInput = ethers.utils.defaultAbiCoder.encode(
+      ['address', 'uint256', 'uint256', 'bytes', 'bool'],
+      [this.walletAddress, amountIn, amountOutMin, encodedPath, true],
+    );
+
+    const commands = ethers.utils.hexlify([V3_SWAP_EXACT_IN]);
+
+    // Simulate
     try {
-      await clRouter.callStatic.exactInputSingle(swapParams);
-    } catch (simError: any) {
-      const msg = (simError?.message || '').toString();
-      console.error('[DexSwapService] CL simulation failed:', simError);
+      await universalRouter.callStatic.execute(commands, [swapInput], deadline);
+    } catch (simError: unknown) {
+      const msg = ((simError as Error)?.message || '').toString();
+      console.error('[DexSwapService] Universal Router simulation failed:', simError);
       return {
         success: false,
         error: msg.includes('INSUFFICIENT')
           ? 'Received amount below minimum (increase slippage or reduce size)'
-          : msg || 'Swap simulation failed',
+          : 'Swap simulation failed — ' + (msg || 'unknown error'),
       };
     }
 
-    const estimatedGas = await clRouter.estimateGas.exactInputSingle(swapParams);
+    const estimatedGas = await universalRouter.estimateGas.execute(
+      commands,
+      [swapInput],
+      deadline,
+    );
     const gasLimit = estimatedGas.mul(130).div(100);
 
-    const tx = await clRouter.exactInputSingle(swapParams, { gasLimit: gasLimit.toNumber() });
+    const tx = await universalRouter.execute(commands, [swapInput], deadline, {
+      gasLimit: gasLimit.toNumber(),
+    });
 
     onStatus?.(`Waiting for confirmations (1/${SWAP_CONFIRMATIONS})...`);
     const receipt = await tx.wait(SWAP_CONFIRMATIONS);
@@ -187,14 +209,15 @@ export class DexSwapService {
   }
 
   /**
-   * Multi-hop swap where V2 legs execute first, then the CL leg.
-   * e.g., ETH → ACES (V2 Router) then ACES → TOKEN (CL SwapRouter)
+   * Multi-hop: V2 legs first, then CL leg via Universal Router.
+   * e.g., ETH → ACES (V2 Router) then ACES → TOKEN (Universal Router)
    */
   private async executeMultiHopSlipstreamSwap(
     quote: DexQuoteResponse,
     paymentAsset: PaymentAsset,
     signer: ethers.Signer,
-    clRouter: ethers.Contract,
+    universalRouterAddress: string,
+    permit2Address: string,
     tickSpacing: number,
     deadline: number,
     onStatus?: StatusCallback,
@@ -204,11 +227,10 @@ export class DexSwapService {
     const amountIn = ethers.BigNumber.from(quote.inputAmountRaw);
     const amountOutMin = ethers.BigNumber.from(quote.minOutputRaw);
 
-    // V2 legs: everything except the last route (which is the CL leg)
     const v2Routes = routes.slice(0, -1);
-    const v2Path = path.slice(0, path.length - 1); // up to ACES
+    const v2Path = path.slice(0, path.length - 1);
 
-    // Step 1: Execute V2 leg(s)
+    // Step 1: V2 leg(s)
     onStatus?.('Swapping to ACES...');
 
     const v2RoutesArg = v2Routes.map((r) => ({
@@ -221,7 +243,7 @@ export class DexSwapService {
     let v2Tx: ethers.ContractTransaction;
     if (paymentAsset === 'ETH') {
       v2Tx = await this.swapExactETHForTokens(
-        ethers.BigNumber.from(0), // accept any amount for intermediate
+        ethers.BigNumber.from(0),
         v2RoutesArg,
         this.walletAddress,
         deadline,
@@ -253,9 +275,12 @@ export class DexSwapService {
           deadline,
           { gasLimit: gas.mul(120).div(100).toNumber() },
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[DexSwapService] V2 leg failed:', err);
-        return { success: false, error: 'First swap leg failed: ' + (err?.message || 'unknown') };
+        return {
+          success: false,
+          error: 'First swap leg failed: ' + ((err as Error)?.message || 'unknown'),
+        };
       }
     }
 
@@ -267,33 +292,37 @@ export class DexSwapService {
     const acesContract = new ethers.Contract(acesAddress, ERC20_ABI, signer);
     const acesBalance = await acesContract.balanceOf(this.walletAddress);
 
-    // Step 3: Execute CL leg (ACES → TOKEN)
+    // Step 3: CL leg (ACES → TOKEN) via Universal Router
     onStatus?.('Swapping ACES to token...');
 
     const tokenOut = path[path.length - 1];
-    await this.ensureAllowance({
-      tokenAddress: acesAddress,
-      spenderAddress: clRouter.address,
-      amount: acesBalance,
+
+    await this.ensurePermit2Approval(acesAddress, permit2Address, acesBalance, signer, onStatus);
+    await this.ensurePermit2Allowance(
+      acesAddress,
+      permit2Address,
+      universalRouterAddress,
       signer,
       onStatus,
-    });
+    );
 
-    const clParams = {
-      tokenIn: acesAddress,
-      tokenOut,
-      tickSpacing,
-      recipient: this.walletAddress,
-      deadline,
-      amountIn: acesBalance,
-      amountOutMinimum: amountOutMin,
-      sqrtPriceLimitX96: 0,
-    };
+    const universalRouter = new ethers.Contract(
+      universalRouterAddress,
+      UNIVERSAL_ROUTER_ABI,
+      signer,
+    );
+    const encodedPath = this.encodeCLPath(acesAddress, tokenOut, tickSpacing);
+    const swapInput = ethers.utils.defaultAbiCoder.encode(
+      ['address', 'uint256', 'uint256', 'bytes', 'bool'],
+      [this.walletAddress, acesBalance, amountOutMin, encodedPath, true],
+    );
+
+    const commands = ethers.utils.hexlify([V3_SWAP_EXACT_IN]);
 
     try {
-      await clRouter.callStatic.exactInputSingle(clParams);
-    } catch (simError: any) {
-      const msg = (simError?.message || '').toString();
+      await universalRouter.callStatic.execute(commands, [swapInput], deadline);
+    } catch (simError: unknown) {
+      const msg = ((simError as Error)?.message || '').toString();
       console.error('[DexSwapService] CL leg simulation failed:', simError);
       return {
         success: false,
@@ -303,8 +332,8 @@ export class DexSwapService {
       };
     }
 
-    const gas = await clRouter.estimateGas.exactInputSingle(clParams);
-    const tx = await clRouter.exactInputSingle(clParams, {
+    const gas = await universalRouter.estimateGas.execute(commands, [swapInput], deadline);
+    const tx = await universalRouter.execute(commands, [swapInput], deadline, {
       gasLimit: gas.mul(130).div(100).toNumber(),
     });
 
@@ -316,16 +345,17 @@ export class DexSwapService {
   }
 
   /**
-   * ETH → TOKEN via CL: wrap ETH to WETH, then exactInputSingle
+   * ETH → TOKEN via CL: wrap ETH → WETH, then Universal Router swap.
    */
   private async executeETHToTokenCL(
-    clRouter: ethers.Contract,
     quote: DexQuoteResponse,
     amountIn: ethers.BigNumber,
     amountOutMin: ethers.BigNumber,
     tickSpacing: number,
     deadline: number,
     signer: ethers.Signer,
+    universalRouterAddress: string,
+    permit2Address: string,
     onStatus?: StatusCallback,
   ): Promise<TransactionResult> {
     const path = (quote.path || []).map((addr: string) => ethers.utils.getAddress(addr));
@@ -337,41 +367,45 @@ export class DexSwapService {
     const wrapTx = await weth.deposit({ value: amountIn });
     await wrapTx.wait(1);
 
-    // Approve WETH for CL SwapRouter
-    await this.ensureAllowance({
-      tokenAddress: WETH_ADDRESS,
-      spenderAddress: clRouter.address,
-      amount: amountIn,
+    // Approve Permit2 for WETH, then grant allowance to Universal Router
+    await this.ensurePermit2Approval(WETH_ADDRESS, permit2Address, amountIn, signer, onStatus);
+    await this.ensurePermit2Allowance(
+      WETH_ADDRESS,
+      permit2Address,
+      universalRouterAddress,
       signer,
       onStatus,
-    });
+    );
 
     onStatus?.('Confirming swap...');
-    const swapParams = {
-      tokenIn: WETH_ADDRESS,
-      tokenOut,
-      tickSpacing,
-      recipient: this.walletAddress,
-      deadline,
-      amountIn,
-      amountOutMinimum: amountOutMin,
-      sqrtPriceLimitX96: 0,
-    };
+
+    const universalRouter = new ethers.Contract(
+      universalRouterAddress,
+      UNIVERSAL_ROUTER_ABI,
+      signer,
+    );
+    const encodedPath = this.encodeCLPath(WETH_ADDRESS, tokenOut, tickSpacing);
+    const swapInput = ethers.utils.defaultAbiCoder.encode(
+      ['address', 'uint256', 'uint256', 'bytes', 'bool'],
+      [this.walletAddress, amountIn, amountOutMin, encodedPath, true],
+    );
+
+    const commands = ethers.utils.hexlify([V3_SWAP_EXACT_IN]);
 
     try {
-      await clRouter.callStatic.exactInputSingle(swapParams);
-    } catch (simError: any) {
-      const msg = (simError?.message || '').toString();
+      await universalRouter.callStatic.execute(commands, [swapInput], deadline);
+    } catch (simError: unknown) {
+      const msg = ((simError as Error)?.message || '').toString();
       return {
         success: false,
         error: msg.includes('INSUFFICIENT')
           ? 'Received amount below minimum (increase slippage or reduce size)'
-          : msg || 'Swap simulation failed',
+          : 'Swap simulation failed — ' + (msg || 'unknown error'),
       };
     }
 
-    const gas = await clRouter.estimateGas.exactInputSingle(swapParams);
-    const tx = await clRouter.exactInputSingle(swapParams, {
+    const gas = await universalRouter.estimateGas.execute(commands, [swapInput], deadline);
+    const tx = await universalRouter.execute(commands, [swapInput], deadline, {
       gasLimit: gas.mul(130).div(100).toNumber(),
     });
 
@@ -435,8 +469,8 @@ export class DexSwapService {
           deadline,
           { value: amountIn },
         );
-      } catch (simError: any) {
-        const msg = (simError?.message || '').toString();
+      } catch (simError: unknown) {
+        const msg = ((simError as Error)?.message || '').toString();
         console.error('[DexSwapService] Simulation failed (ETH->Token):', simError);
         return {
           success: false,
@@ -486,8 +520,8 @@ export class DexSwapService {
           this.walletAddress,
           deadline,
         );
-      } catch (simError: any) {
-        const msg = (simError?.message || '').toString();
+      } catch (simError: unknown) {
+        const msg = ((simError as Error)?.message || '').toString();
         console.error('[DexSwapService] Simulation failed (Token->Token):', simError);
         return {
           success: false,
@@ -515,9 +549,9 @@ export class DexSwapService {
           deadline,
           gasLimit.toNumber(),
         );
-      } catch (gasError: any) {
+      } catch (gasError: unknown) {
         console.error('[DexSwapService] Gas estimation failed:', gasError);
-        const msg = (gasError?.message || '').toString();
+        const msg = ((gasError as Error)?.message || '').toString();
         let userMsg = 'Swap failed during gas estimation';
         if (msg.includes('INSUFFICIENT_OUTPUT')) {
           userMsg = 'Received amount below minimum (increase slippage or reduce size)';
@@ -535,6 +569,71 @@ export class DexSwapService {
     onStatus?.('Transaction confirmed!');
 
     return { success: true, hash: tx.hash, receipt };
+  }
+
+  // ================================================================
+  // PATH ENCODING
+  // ================================================================
+
+  /**
+   * Encode a CL path for the Universal Router.
+   * Uses CL_FACTORY_2_FLAG to signal pools created by the CL Pool Launcher factory.
+   */
+  private encodeCLPath(tokenIn: string, tokenOut: string, tickSpacing: number): string {
+    const fee = CL_FACTORY_2_FLAG | tickSpacing;
+    return ethers.utils.solidityPack(
+      ['address', 'uint24', 'address'],
+      [tokenIn, fee, tokenOut],
+    );
+  }
+
+  // ================================================================
+  // PERMIT2 HELPERS
+  // ================================================================
+
+  /**
+   * Ensure the token has granted ERC20 approval to Permit2.
+   */
+  private async ensurePermit2Approval(
+    tokenAddress: string,
+    permit2Address: string,
+    amount: ethers.BigNumber,
+    signer: ethers.Signer,
+    onStatus?: StatusCallback,
+  ): Promise<void> {
+    const erc20 = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+    const allowance: ethers.BigNumber = await erc20.allowance(this.walletAddress, permit2Address);
+
+    if (allowance.gte(amount)) return;
+
+    onStatus?.('Approving token for Permit2...');
+    const tx = await erc20.approve(permit2Address, ethers.constants.MaxUint256);
+    await tx.wait();
+  }
+
+  /**
+   * Ensure Permit2 has granted an allowance for the Universal Router to spend the token.
+   */
+  private async ensurePermit2Allowance(
+    tokenAddress: string,
+    permit2Address: string,
+    spenderAddress: string,
+    signer: ethers.Signer,
+    onStatus?: StatusCallback,
+  ): Promise<void> {
+    const permit2 = new ethers.Contract(permit2Address, PERMIT2_ABI, signer);
+    const [currentAmount, expiration] = await permit2.allowance(
+      this.walletAddress,
+      tokenAddress,
+      spenderAddress,
+    );
+
+    const now = Math.floor(Date.now() / 1000);
+    if (ethers.BigNumber.from(currentAmount).gt(0) && expiration > now) return;
+
+    onStatus?.('Granting Permit2 allowance...');
+    const tx = await permit2.approve(tokenAddress, spenderAddress, MAX_UINT160, MAX_UINT48);
+    await tx.wait();
   }
 
   // ================================================================
