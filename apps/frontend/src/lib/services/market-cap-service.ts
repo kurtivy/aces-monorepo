@@ -221,32 +221,65 @@ export class MarketCapService {
   }
 
   /**
-   * Get current pool reserves from RPC
+   * Get current pool reserves from RPC.
+   * Supports both Aerodrome V2 (getReserves) and Slipstream CL (slot0 + liquidity) pools.
+   * For CL pools, virtual reserves at the current tick are returned using sqrt-price math.
    */
   private async getPoolReserves(poolAddress: string): Promise<PoolReserves | null> {
     try {
-      // Aerodrome pool ABI (Uniswap V2 compatible)
-      const poolAbi = [
+      const v2Abi = [
         'function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
         'function token0() view returns (address)',
         'function token1() view returns (address)',
       ];
+      const clAbi = [
+        'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, bool)',
+        'function liquidity() view returns (uint128)',
+        'function token0() view returns (address)',
+        'function token1() view returns (address)',
+      ];
 
-      const poolContract = new ethers.Contract(poolAddress, poolAbi, this.provider);
-
-      // Fetch reserves, token addresses, and block number in parallel
-      const [reserves, token0Address, token1Address, blockNumber] = await Promise.all([
-        poolContract.getReserves(),
+      const poolContract = new ethers.Contract(poolAddress, [...v2Abi, ...clAbi], this.provider);
+      const [token0Address, token1Address, blockNumber] = await Promise.all([
         poolContract.token0(),
         poolContract.token1(),
         this.provider.getBlockNumber(),
       ]);
 
-      const [reserve0, reserve1] = reserves;
+      // Try V2 getReserves first
+      try {
+        const reserves = await poolContract.getReserves();
+        return {
+          reserve0: reserves[0].toString(),
+          reserve1: reserves[1].toString(),
+          token0: token0Address,
+          token1: token1Address,
+          blockNumber,
+        };
+      } catch {
+        // Not a V2 pool — try CL slot0 + liquidity
+      }
+
+      // CL pool: derive virtual reserves from sqrtPriceX96 and liquidity
+      const [slot0, liquidityRaw] = await Promise.all([
+        poolContract.slot0(),
+        poolContract.liquidity(),
+      ]);
+
+      const Q96 = ethers.BigNumber.from(2).pow(96);
+      const sqrtP = ethers.BigNumber.from(slot0.sqrtPriceX96);
+      const L = ethers.BigNumber.from(liquidityRaw);
+
+      if (sqrtP.isZero() || L.isZero()) return null;
+
+      // virtual amount1 = L * sqrtP / Q96
+      const virtualAmount1 = L.mul(sqrtP).div(Q96);
+      // virtual amount0 = L * Q96 / sqrtP
+      const virtualAmount0 = L.mul(Q96).div(sqrtP);
 
       return {
-        reserve0: reserve0.toString(),
-        reserve1: reserve1.toString(),
+        reserve0: virtualAmount0.toString(),
+        reserve1: virtualAmount1.toString(),
         token0: token0Address,
         token1: token1Address,
         blockNumber,

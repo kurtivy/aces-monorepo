@@ -81,8 +81,15 @@ export class TokenMetricsService {
     const priceData = await priceService.getPrices();
     const acesUsdPrice = Number.isFinite(priceData.acesUsd) ? priceData.acesUsd : 0;
 
-    // Get token price (from pool or default)
-    const tokenPriceAces = 0; // Will be calculated from pool if available
+    // Get token price from pool (supports both V2 and CL)
+    let tokenPriceAces = 0;
+    if (poolAddress) {
+      try {
+        tokenPriceAces = await this.getTokenPriceInAces(tokenAddress, poolAddress);
+      } catch {
+        // Non-critical — leave as 0
+      }
+    }
     const tokenPriceUsd = Number.isFinite(acesUsdPrice) ? tokenPriceAces * acesUsdPrice : 0;
 
     // Get holder count (simplified - can be enhanced later)
@@ -150,7 +157,7 @@ export class TokenMetricsService {
       }
     }
 
-    // Calculate DEX liquidity
+    // Calculate DEX liquidity — supports both V2 (getReserves) and CL (slot0 + liquidity) pools
     let liquidityUsd: number | null = null;
     let liquiditySource: 'dex' | null = null;
 
@@ -158,14 +165,14 @@ export class TokenMetricsService {
       try {
         const POOL_ABI = [
           'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+          'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, bool)',
+          'function liquidity() view returns (uint128)',
           'function token0() view returns (address)',
           'function token1() view returns (address)',
         ];
 
         const poolContract = new ethers.Contract(poolAddress, POOL_ABI, this.provider);
-
-        const [reserves, token0Address, token1Address] = await Promise.all([
-          poolContract.getReserves(),
+        const [token0Address, token1Address] = await Promise.all([
           poolContract.token0(),
           poolContract.token1(),
         ]);
@@ -177,20 +184,44 @@ export class TokenMetricsService {
         const isToken1Aces = token1Address.toLowerCase() === acesAddress;
 
         if (isToken0Aces || isToken1Aces) {
-          const acesReserveRaw = isToken0Aces ? reserves[0] : reserves[1];
-          const acesReserve = new Decimal(acesReserveRaw.toString()).div(new Decimal('1e18'));
+          let acesReserveWei: ethers.BigNumber | null = null;
 
-          const acesUsdDecimal = new Decimal(acesUsdPrice || 0);
-          const acesReserveUsd = acesReserve.mul(acesUsdDecimal);
-          const totalLiquidityUsd = acesReserveUsd.mul(2); // Double for 50/50 pool
+          // Try V2 getReserves first
+          try {
+            const reserves = await poolContract.getReserves();
+            acesReserveWei = isToken0Aces ? reserves[0] : reserves[1];
+          } catch {
+            // CL pool — compute virtual ACES reserve from slot0 + liquidity
+            try {
+              const [slot0, liquidityRaw] = await Promise.all([
+                poolContract.slot0(),
+                poolContract.liquidity(),
+              ]);
+              const Q96 = ethers.BigNumber.from(2).pow(96);
+              const sqrtP = ethers.BigNumber.from(slot0.sqrtPriceX96);
+              const L = ethers.BigNumber.from(liquidityRaw);
+              if (!sqrtP.isZero() && !L.isZero()) {
+                // virtual amount of token1 = L * sqrtP / Q96
+                // virtual amount of token0 = L * Q96 / sqrtP
+                acesReserveWei = isToken1Aces
+                  ? L.mul(sqrtP).div(Q96)
+                  : L.mul(Q96).div(sqrtP);
+              }
+            } catch (clError) {
+              console.warn('[TokenMetricsService] CL pool liquidity fetch failed:', clError);
+            }
+          }
 
-          const liquidityValueNumber = totalLiquidityUsd.isFinite()
-            ? totalLiquidityUsd.toNumber()
-            : 0;
-
-          if (liquidityValueNumber > 0) {
-            liquidityUsd = liquidityValueNumber;
-            liquiditySource = 'dex';
+          if (acesReserveWei && acesReserveWei.gt(0)) {
+            const acesReserve = new Decimal(acesReserveWei.toString()).div(new Decimal('1e18'));
+            const totalLiquidityUsd = acesReserve.mul(new Decimal(acesUsdPrice || 0)).mul(2);
+            const liquidityValueNumber = totalLiquidityUsd.isFinite()
+              ? totalLiquidityUsd.toNumber()
+              : 0;
+            if (liquidityValueNumber > 0) {
+              liquidityUsd = liquidityValueNumber;
+              liquiditySource = 'dex';
+            }
           }
         }
       } catch (error) {
@@ -231,6 +262,55 @@ export class TokenMetricsService {
     });
 
     return responseData;
+  }
+
+  /**
+   * Get token price in ACES from pool state.
+   * Supports both V2 (getReserves) and CL (slot0 + liquidity) pools.
+   */
+  private async getTokenPriceInAces(tokenAddress: string, poolAddress: string): Promise<number> {
+    const POOL_ABI = [
+      'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+      'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, bool)',
+      'function token0() view returns (address)',
+      'function token1() view returns (address)',
+    ];
+    const poolContract = new ethers.Contract(poolAddress, POOL_ABI, this.provider);
+    const acesAddress = (
+      process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367'
+    ).toLowerCase();
+
+    const [token0, token1] = await Promise.all([poolContract.token0(), poolContract.token1()]);
+    const isToken0Aces = token0.toLowerCase() === acesAddress;
+    const isToken1Aces = token1.toLowerCase() === acesAddress;
+
+    if (!isToken0Aces && !isToken1Aces) return 0;
+
+    // Try V2 first
+    try {
+      const reserves = await poolContract.getReserves();
+      const acesReserve = new Decimal((isToken0Aces ? reserves[0] : reserves[1]).toString());
+      const tokenReserve = new Decimal((isToken0Aces ? reserves[1] : reserves[0]).toString());
+      if (tokenReserve.isZero()) return 0;
+      return acesReserve.div(tokenReserve).toNumber();
+    } catch {
+      // CL pool
+    }
+
+    // CL pool: price from sqrtPriceX96
+    const slot0 = await poolContract.slot0();
+    const sqrtP = Number(ethers.BigNumber.from(slot0.sqrtPriceX96).toString());
+    const Q96 = Number(ethers.BigNumber.from(2).pow(96).toString());
+    const price = Math.pow(sqrtP / Q96, 2); // price = token1/token0
+
+    // price = token1/token0, ACES per token
+    if (isToken0Aces) {
+      // token0=ACES, token1=TOKEN → price = TOKEN/ACES → token price in ACES = 1/price
+      return price === 0 ? 0 : 1 / price;
+    } else {
+      // token0=TOKEN, token1=ACES → price = ACES/TOKEN → token price in ACES = price
+      return price;
+    }
   }
 
   /**
