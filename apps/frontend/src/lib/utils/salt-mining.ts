@@ -4,6 +4,8 @@ export interface SaltMiningOptions {
   targetSuffix: string; // 'ace'
   maxAttempts: number;
   onProgress?: (attempts: number, timeElapsed: number) => void;
+  /** When set, accept only if predicted address is strictly lower than this (for token ordering) */
+  maxAddress?: string;
 }
 
 export interface SaltMiningResult {
@@ -149,8 +151,9 @@ export async function mineVanitySaltFixedSupply(
   bytecode: string,
   options: SaltMiningOptions,
 ): Promise<SaltMiningResult> {
-  const { targetSuffix, maxAttempts, onProgress } = options;
+  const { targetSuffix, maxAttempts, onProgress, maxAddress } = options;
   const startTime = Date.now();
+  const maxAddressLower = maxAddress?.toLowerCase();
 
   // Import the prediction function
   const { predictFixedSupplyTokenAddress } = await import(
@@ -178,19 +181,24 @@ export async function mineVanitySaltFixedSupply(
 
     // Check if the lowercase address ends with the target suffix (in lowercase)
     if (predictedAddress.toLowerCase().endsWith(targetSuffix.toLowerCase())) {
-      // Apply proper checksumming to the final address
-      const checksummedAddress = ethers.utils.getAddress(predictedAddress);
+      // If maxAddress is set, require predicted address to be strictly lower (for token ordering)
+      if (maxAddressLower && predictedAddress.toLowerCase() >= maxAddressLower) {
+        // Continue mining
+      } else {
+        // Apply proper checksumming to the final address
+        const checksummedAddress = ethers.utils.getAddress(predictedAddress);
 
-      // Check that the checksummed address ends with the exact target suffix (with correct case)
-      if (checksummedAddress.endsWith(targetSuffix)) {
-        return {
-          salt,
-          predictedAddress: checksummedAddress,
-          attempts: attempts + 1,
-          timeElapsed: Date.now() - startTime,
-        };
+        // Check that the checksummed address ends with the exact target suffix (with correct case)
+        if (checksummedAddress.endsWith(targetSuffix)) {
+          return {
+            salt,
+            predictedAddress: checksummedAddress,
+            attempts: attempts + 1,
+            timeElapsed: Date.now() - startTime,
+          };
+        }
+        // If checksumming didn't produce the desired case, continue mining
       }
-      // If checksumming didn't produce the desired case, continue mining
     }
 
     // Report progress every 250 attempts
@@ -204,9 +212,11 @@ export async function mineVanitySaltFixedSupply(
     }
   }
 
-  throw new Error(
-    `Could not find vanity address ending in "${targetSuffix}" after ${maxAttempts} attempts`,
-  );
+  const suffixMsg = `Could not find vanity address ending in "${targetSuffix}"`;
+  const maxMsg = maxAddress
+    ? ` and below max address after ${maxAttempts} attempts`
+    : ` after ${maxAttempts} attempts`;
+  throw new Error(suffixMsg + maxMsg);
 }
 
 /**

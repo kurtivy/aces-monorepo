@@ -41,6 +41,9 @@ import {
   INITIAL_DEPLOYER_VALIDATION,
 } from '../types';
 
+/** Current ACES token address; mined token must be lower than this for Aerodrome pool token0 ordering */
+const ACES_TOKEN_ADDRESS = '0x55337650856299363c496065C836B9C6E9dE0367';
+
 export function useTokenLaunchState() {
   const {
     isAuthenticated: isAdminAuthenticated,
@@ -393,6 +396,7 @@ export function useTokenLaunchState() {
         {
           targetSuffix: 'ACE',
           maxAttempts: 200000,
+          maxAddress: ACES_TOKEN_ADDRESS,
           onProgress: (attempts, timeElapsed) => {
             setMiningProgress({ attempts, timeElapsed, predictedAddress: '' });
             setLoading(

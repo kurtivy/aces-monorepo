@@ -101,3 +101,70 @@ export const removeToken = mutation({
     return item._id;
   },
 });
+
+/**
+ * Link a token to a listing by contract address and listing id.
+ */
+export const linkTokenToListing = mutation({
+  args: { contractAddress: v.string(), listingId: v.string() },
+  handler: async (ctx, args) => {
+    const normalized = args.contractAddress.toLowerCase();
+    const token = await ctx.db
+      .query('tokens')
+      .withIndex('by_contractAddress', (q) => q.eq('contractAddress', normalized))
+      .first();
+    if (!token) return null;
+    await ctx.db.patch(token._id, { listingId: args.listingId });
+    return await ctx.db.get(token._id);
+  },
+});
+
+/**
+ * Create or update a token and optionally link to a listing.
+ * Useful for admin token creation workflow.
+ */
+export const createOrUpdateToken = mutation({
+  args: {
+    contractAddress: v.string(),
+    symbol: v.string(),
+    name: v.string(),
+    chainId: v.number(),
+    decimals: v.optional(v.number()),
+    poolAddress: v.optional(v.string()),
+    listingId: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const normalized = args.contractAddress.toLowerCase();
+    const existing = await ctx.db
+      .query('tokens')
+      .withIndex('by_contractAddress', (q) => q.eq('contractAddress', normalized))
+      .first();
+
+    if (existing) {
+      const updates: Record<string, unknown> = {
+        symbol: args.symbol,
+        name: args.name,
+        chainId: args.chainId,
+      };
+      if (args.decimals !== undefined) updates.decimals = args.decimals;
+      if (args.poolAddress !== undefined) updates.poolAddress = args.poolAddress;
+      if (args.listingId !== undefined) updates.listingId = args.listingId;
+      if (args.isActive !== undefined) updates.isActive = args.isActive;
+
+      await ctx.db.patch(existing._id, updates);
+      return await ctx.db.get(existing._id);
+    }
+
+    return await ctx.db.insert('tokens', {
+      contractAddress: normalized,
+      symbol: args.symbol,
+      name: args.name,
+      chainId: args.chainId,
+      decimals: args.decimals,
+      poolAddress: args.poolAddress,
+      listingId: args.listingId,
+      isActive: args.isActive ?? true,
+    });
+  },
+});

@@ -227,19 +227,15 @@ export class MarketCapService {
    */
   private async getPoolReserves(poolAddress: string): Promise<PoolReserves | null> {
     try {
-      const v2Abi = [
-        'function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+      const poolAbi = [
         'function token0() view returns (address)',
         'function token1() view returns (address)',
-      ];
-      const clAbi = [
+        'function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
         'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, bool)',
         'function liquidity() view returns (uint128)',
-        'function token0() view returns (address)',
-        'function token1() view returns (address)',
       ];
 
-      const poolContract = new ethers.Contract(poolAddress, [...v2Abi, ...clAbi], this.provider);
+      const poolContract = new ethers.Contract(poolAddress, poolAbi, this.provider);
       const [token0Address, token1Address, blockNumber] = await Promise.all([
         poolContract.token0(),
         poolContract.token1(),

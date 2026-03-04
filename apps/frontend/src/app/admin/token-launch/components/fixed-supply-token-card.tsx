@@ -239,7 +239,7 @@ export function FixedSupplyTokenCard() {
                 Vanity Address Mining
               </h3>
               <p className="text-xs text-[#DCDDCC]">
-                Mine a salt to create a token address ending in &quot;ACE&quot;
+                Mine a salt so the token address ends in &quot;ACE&quot; and is lower than the current ACES token address (for Aerodrome pool token0 ordering).
               </p>
             </div>
             <Button
