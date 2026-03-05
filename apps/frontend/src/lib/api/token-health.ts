@@ -76,8 +76,10 @@ export async function fetchTokenHealth(
   tokenAddress: string,
   chainId: number = 8453,
   currency: 'usd' | 'aces' = 'usd',
+  options: { includeFees?: boolean } = {},
 ): Promise<TokenHealthData> {
-  const cacheKey = getCacheKey(tokenAddress, chainId, currency);
+  const { includeFees = false } = options;
+  const cacheKey = getCacheKey(tokenAddress, chainId, currency) + (includeFees ? ':fees' : '');
 
   // Check cache first
   const cached = cache.get(cacheKey);
@@ -90,8 +92,8 @@ export async function fetchTokenHealth(
 
   return requestDeduplicator.dedupe(dedupeKey, async () => {
     const apiUrl = resolveApiBaseUrl();
-    // Use simplified Next.js API route (no /v1)
-    const url = `${apiUrl}/api/tokens/${tokenAddress}/health?chainId=${chainId}&currency=${currency}`;
+    const feesParam = includeFees ? '&includeFees=1' : '';
+    const url = `${apiUrl}/api/tokens/${tokenAddress}/health?chainId=${chainId}&currency=${currency}${feesParam}`;
 
     const response = await fetch(url, {
       signal: AbortSignal.timeout(10000), // 10 second timeout

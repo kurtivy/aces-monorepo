@@ -17,8 +17,10 @@ export async function GET(
     const chainIdStr = searchParams.get('chainId');
     const currency = (searchParams.get('currency') as 'usd' | 'aces') || 'usd';
     const chainId = chainIdStr ? parseInt(chainIdStr, 10) : 8453;
+    const includeFees =
+      searchParams.get('includeFees') === '1' || searchParams.get('includeFees') === 'true';
 
-    const responseData = await getHealthCached(prisma, address, chainId, currency);
+    const responseData = await getHealthCached(prisma, address, chainId, currency, { includeFees });
     return NextResponse.json(responseData);
   } catch (error) {
     console.error('[Health] Failed to fetch token health:', error);

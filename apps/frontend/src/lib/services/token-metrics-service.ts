@@ -55,7 +55,12 @@ export class TokenMetricsService {
   /**
    * Get token metrics for a DEX token
    */
-  async getTokenMetrics(tokenAddress: string, chainId: number = 8453): Promise<TokenMetrics> {
+  async getTokenMetrics(
+    tokenAddress: string,
+    chainId: number = 8453,
+    options: { includeFees?: boolean } = {},
+  ): Promise<TokenMetrics> {
+    const { includeFees = false } = options;
     const cacheKey = `${tokenAddress.toLowerCase()}-${chainId || 'default'}`;
     const cached = this.metricsCache.get(cacheKey);
 
@@ -105,7 +110,7 @@ export class TokenMetricsService {
     let dexFeesAces = 0;
     let dexFeesUsd = 0;
 
-    if (poolAddress && token?.dexLiveAt) {
+    if (includeFees && poolAddress && token?.dexLiveAt) {
       try {
         const dexFeeResult = await this.calculateDexFees(
           tokenAddress,
@@ -118,8 +123,6 @@ export class TokenMetricsService {
       } catch (error) {
         console.warn('[TokenMetricsService] Failed to calculate DEX fees:', error);
       }
-    } else if (!token?.dexLiveAt) {
-      console.warn('[TokenMetricsService] No dexLiveAt found for token, skipping fee calculation');
     }
 
     // Calculate DEX volume (24h) from on-chain Swap events

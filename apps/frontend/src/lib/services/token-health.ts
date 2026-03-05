@@ -22,13 +22,14 @@ export async function getTokenHealth(
   tokenAddress: string,
   chainId: number = DEFAULT_CHAIN_ID,
   currency: 'usd' | 'aces' = 'usd',
+  options: { includeFees?: boolean } = {},
 ): Promise<TokenHealthData> {
   const normalizedAddress = tokenAddress.toLowerCase();
   const metricsService = getTokenMetricsService(prisma);
   const marketCapService = getMarketCapService(prisma);
 
   const [metricsResult, marketCapResult] = await Promise.allSettled([
-    metricsService.getTokenMetrics(normalizedAddress, chainId),
+    metricsService.getTokenMetrics(normalizedAddress, chainId, { includeFees: options.includeFees }),
     marketCapService.getMarketCap(normalizedAddress, chainId),
   ]);
 

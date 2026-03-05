@@ -27,6 +27,8 @@ export interface UseTokenMetricsOptions {
   refreshIntervalMs?: number;
   /** Pre-fetched health (e.g. from listing?includeHealth=1). When set, skips initial REST fetch and shows data immediately. */
   initialHealth?: TokenHealthData | null;
+  /** When true, requests lifetime fee data from the health endpoint. Expensive — only enable on the profile page. */
+  includeFees?: boolean;
 }
 
 /**
@@ -40,6 +42,7 @@ export function useTokenMetrics(
   const opts = typeof options === 'number' ? { refreshIntervalMs: options } : options;
   const refreshIntervalMs = opts.refreshIntervalMs ?? 30000;
   const initialHealth = opts.initialHealth;
+  const includeFees = opts.includeFees ?? false;
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);
   const restFetchedRef = useRef<boolean>(false); // ensure one REST fetch per token to seed fee fields
@@ -228,7 +231,7 @@ export function useTokenMetrics(
 
     try {
       // Use unified health endpoint (automatically deduped)
-      const healthData = await fetchTokenHealth(tokenAddress, 8453, 'usd');
+      const healthData = await fetchTokenHealth(tokenAddress, 8453, 'usd', { includeFees });
       const previousMetrics = metricsRef.current;
 
       if (healthData.metricsData) {
@@ -337,7 +340,7 @@ export function useTokenMetrics(
     } finally {
       setLoading(false);
     }
-  }, [tokenAddress, wsConnected]);
+  }, [tokenAddress, wsConnected, includeFees]);
 
   // Seed state from pre-fetched health (e.g. listing+health in one request) to avoid duplicate fetch and show data immediately.
   const applyHealthToState = useCallback((healthData: TokenHealthData) => {

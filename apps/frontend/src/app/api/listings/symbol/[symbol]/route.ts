@@ -141,7 +141,13 @@ export async function GET(
 
     if (includeHealth && token?.contractAddress) {
       try {
-        payload.health = await getTokenHealth(prisma, token.contractAddress, 8453, 'usd');
+        const healthTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Token health timeout')), 5000),
+        );
+        payload.health = await Promise.race([
+          getTokenHealth(prisma, token.contractAddress, 8453, 'usd'),
+          healthTimeout,
+        ]);
       } catch (healthErr) {
         console.warn('[Listings] includeHealth failed:', healthErr);
       }

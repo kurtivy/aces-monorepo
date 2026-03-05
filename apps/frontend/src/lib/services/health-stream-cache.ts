@@ -61,15 +61,16 @@ export async function getHealthCached(
   address: string,
   chainId: number,
   currency: 'usd' | 'aces',
+  options: { includeFees?: boolean } = {},
 ): Promise<HealthResponse> {
-  const key = cacheKey(address, chainId, currency);
+  const key = cacheKey(address, chainId, currency) + (options.includeFees ? ':fees' : '');
   const cached = healthCache.get(key);
   const now = Date.now();
 
   const fetchAndCache = async (): Promise<HealthResponse> => {
     await acquire();
     try {
-      const data = await getTokenHealth(prisma, address, chainId, currency);
+      const data = await getTokenHealth(prisma, address, chainId, currency, options);
       const response: HealthResponse = {
         success: true,
         data,

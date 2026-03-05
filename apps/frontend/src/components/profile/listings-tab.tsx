@@ -179,6 +179,7 @@ function ListingRow({
     listing.contractAddress && listing.contractAddress !== '0x0000...0000'
       ? listing.contractAddress
       : undefined,
+    { includeFees: true },
   );
 
   return (
