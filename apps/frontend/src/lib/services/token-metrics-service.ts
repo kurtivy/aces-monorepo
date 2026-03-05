@@ -13,6 +13,7 @@ import { ethers } from 'ethers';
 import { Decimal } from 'decimal.js';
 import { getPriceCacheService } from './price-cache-service';
 import { createRpcProvider, getDefaultRpcUrl } from '../utils/rpc-provider';
+import { detectSlipstreamPool } from './slipstream-quote';
 
 interface TokenMetrics {
   contractAddress: string;
@@ -86,11 +87,19 @@ export class TokenMetricsService {
     const priceData = await priceService.getPrices();
     const acesUsdPrice = Number.isFinite(priceData.acesUsd) ? priceData.acesUsd : 0;
 
+    // Detect pool type once — V3 (Slipstream) uses tickSpacing(), V2 does not.
+    // This eliminates scattered getReserves() probes that can hang on CL pools.
+    let isSlipstream = false;
+    if (poolAddress) {
+      const detection = await detectSlipstreamPool(this.provider, poolAddress);
+      isSlipstream = detection.isSlipstream;
+    }
+
     // Get token price from pool (supports both V2 and CL)
     let tokenPriceAces = 0;
     if (poolAddress) {
       try {
-        tokenPriceAces = await this.getTokenPriceInAces(tokenAddress, poolAddress);
+        tokenPriceAces = await this.getTokenPriceInAces(tokenAddress, poolAddress, isSlipstream);
       } catch {
         // Non-critical — leave as 0
       }
@@ -117,6 +126,7 @@ export class TokenMetricsService {
           poolAddress,
           token.dexLiveAt,
           acesUsdPrice,
+          isSlipstream,
         );
         dexFeesAces = parseFloat(dexFeeResult.aces);
         dexFeesUsd = dexFeeResult.usd;
@@ -135,7 +145,7 @@ export class TokenMetricsService {
         // Base produces ~1 block every 2 seconds → 43200 blocks per day
         const BLOCKS_PER_DAY = 43200;
         const fromBlock = Math.max(0, currentBlock - BLOCKS_PER_DAY);
-        const onChainVol = await this.getOnChainVolume(poolAddress, acesUsdPrice, fromBlock, currentBlock);
+        const onChainVol = await this.getOnChainVolume(poolAddress, acesUsdPrice, fromBlock, currentBlock, isSlipstream);
         volume24hAces = onChainVol.volumeAces;
         volume24hUsd = onChainVol.volumeUsd;
       } catch (error) {
@@ -169,17 +179,15 @@ export class TokenMetricsService {
         const isToken0Aces = token0Address.toLowerCase() === acesAddress;
         const isToken1Aces = token1Address.toLowerCase() === acesAddress;
 
-          if (isToken0Aces || isToken1Aces) {
+        if (isToken0Aces || isToken1Aces) {
           let acesReserveWei: ethers.BigNumber | null = null;
-          let isClPool = false;
 
-          // Try V2 getReserves first
-          try {
+          if (!isSlipstream) {
+            // V2: read reserves directly
             const reserves = await poolContract.getReserves();
             acesReserveWei = isToken0Aces ? reserves[0] : reserves[1];
-          } catch {
-            // CL pool — compute virtual ACES reserve from slot0 + liquidity
-            isClPool = true;
+          } else {
+            // V3/CL: derive virtual ACES reserve from sqrtPriceX96 and liquidity
             try {
               const [slot0, liquidityRaw] = await Promise.all([
                 poolContract.slot0(),
@@ -200,10 +208,9 @@ export class TokenMetricsService {
 
           if (acesReserveWei && acesReserveWei.gt(0)) {
             const acesReserve = new Decimal(acesReserveWei.toString()).div(new Decimal('1e18'));
-            // V2 pools are 50/50 so double the ACES side to get total TVL.
-            // CL pools: use only the ACES virtual reserve — liquidity is concentrated,
-            // not necessarily equal on both sides.
-            const multiplier = isClPool ? 1 : 2;
+            // V2 pools are 50/50 so double the ACES side for total TVL.
+            // CL pools use only the virtual ACES reserve (concentrated, not symmetric).
+            const multiplier = isSlipstream ? 1 : 2;
             const totalLiquidityUsd = acesReserve.mul(new Decimal(acesUsdPrice || 0)).mul(multiplier);
             const liquidityValueNumber = totalLiquidityUsd.isFinite()
               ? totalLiquidityUsd.toNumber()
@@ -258,7 +265,11 @@ export class TokenMetricsService {
    * Get token price in ACES from pool state.
    * Supports both V2 (getReserves) and CL (slot0 + liquidity) pools.
    */
-  private async getTokenPriceInAces(tokenAddress: string, poolAddress: string): Promise<number> {
+  private async getTokenPriceInAces(
+    tokenAddress: string,
+    poolAddress: string,
+    isSlipstream: boolean,
+  ): Promise<number> {
     const POOL_ABI = [
       'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
       'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, bool)',
@@ -276,30 +287,25 @@ export class TokenMetricsService {
 
     if (!isToken0Aces && !isToken1Aces) return 0;
 
-    // Try V2 first
-    try {
+    if (!isSlipstream) {
+      // V2: price from reserves
       const reserves = await poolContract.getReserves();
       const acesReserve = new Decimal((isToken0Aces ? reserves[0] : reserves[1]).toString());
       const tokenReserve = new Decimal((isToken0Aces ? reserves[1] : reserves[0]).toString());
       if (tokenReserve.isZero()) return 0;
       return acesReserve.div(tokenReserve).toNumber();
-    } catch {
-      // CL pool
-    }
-
-    // CL pool: price from sqrtPriceX96
-    const slot0 = await poolContract.slot0();
-    const sqrtP = Number(ethers.BigNumber.from(slot0.sqrtPriceX96).toString());
-    const Q96 = Number(ethers.BigNumber.from(2).pow(96).toString());
-    const price = Math.pow(sqrtP / Q96, 2); // price = token1/token0
-
-    // price = token1/token0, ACES per token
-    if (isToken0Aces) {
-      // token0=ACES, token1=TOKEN → price = TOKEN/ACES → token price in ACES = 1/price
-      return price === 0 ? 0 : 1 / price;
     } else {
-      // token0=TOKEN, token1=ACES → price = ACES/TOKEN → token price in ACES = price
-      return price;
+      // V3/CL: price from sqrtPriceX96
+      const slot0 = await poolContract.slot0();
+      const sqrtP = Number(ethers.BigNumber.from(slot0.sqrtPriceX96).toString());
+      const Q96 = Number(ethers.BigNumber.from(2).pow(96).toString());
+      const price = Math.pow(sqrtP / Q96, 2); // price = token1/token0
+      // token0=ACES → token price in ACES = 1/price; token1=ACES → token price in ACES = price
+      if (isToken0Aces) {
+        return price === 0 ? 0 : 1 / price;
+      } else {
+        return price;
+      }
     }
   }
 
@@ -348,6 +354,7 @@ export class TokenMetricsService {
     poolAddress: string,
     dexLiveAt: Date,
     acesUsdPrice: number,
+    isSlipstream: boolean,
   ): Promise<{ aces: string; usd: number; source: 'db'; timestamp: number }> {
     const cacheKey = `${tokenAddress.toLowerCase()}:fees:${dexLiveAt.getTime()}`;
     const cached = this.dexFeeCache.get(cacheKey);
@@ -365,7 +372,7 @@ export class TokenMetricsService {
       const msAgo = Date.now() - dexLiveAt.getTime();
       const blocksAgo = Math.ceil(msAgo / 2000);
       const fromBlock = Math.max(0, currentBlock - blocksAgo);
-      const { volumeAces } = await this.getOnChainVolume(poolAddress, acesUsdPrice, fromBlock, currentBlock);
+      const { volumeAces } = await this.getOnChainVolume(poolAddress, acesUsdPrice, fromBlock, currentBlock, isSlipstream);
       totalAces = new Decimal(volumeAces);
     } catch (err) {
       console.warn('[TokenMetricsService] On-chain fee calc failed:', err);
@@ -425,11 +432,11 @@ export class TokenMetricsService {
     acesUsdPrice: number,
     fromBlock: number,
     toBlock: number,
+    isSlipstream: boolean,
   ): Promise<{ volumeAces: number; volumeUsd: number; isClPool: boolean }> {
     const POOL_ABI = [
       'function token0() view returns (address)',
       'function token1() view returns (address)',
-      'function getReserves() view returns (uint112, uint112, uint32)',
     ];
     const poolContract = new ethers.Contract(poolAddress, POOL_ABI, this.provider);
     const [token0, token1] = await Promise.all([poolContract.token0(), poolContract.token1()]);
@@ -438,20 +445,12 @@ export class TokenMetricsService {
     ).toLowerCase();
     const isToken0Aces = token0.toLowerCase() === acesAddress;
 
-    // Detect V2 vs CL pool by trying getReserves()
-    let isClPool = false;
-    try {
-      await poolContract.getReserves();
-    } catch {
-      isClPool = true;
-    }
-
     const V2_SWAP_ABI =
       'event Swap(address indexed sender, address indexed to, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out)';
     const CL_SWAP_ABI =
       'event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)';
 
-    const iface = new ethers.utils.Interface([isClPool ? CL_SWAP_ABI : V2_SWAP_ABI]);
+    const iface = new ethers.utils.Interface([isSlipstream ? CL_SWAP_ABI : V2_SWAP_ABI]);
     const swapTopic = iface.getEventTopic('Swap');
 
     const logs = await this.fetchSwapLogs(poolAddress, swapTopic, fromBlock, toBlock);
@@ -462,7 +461,7 @@ export class TokenMetricsService {
         const parsed = iface.parseLog(log);
         let acesWei: Decimal;
 
-        if (isClPool) {
+        if (isSlipstream) {
           // CL: amount0/amount1 are int256 — one is positive (into pool) and one negative
           const raw: ethers.BigNumber = isToken0Aces ? parsed.args.amount0 : parsed.args.amount1;
           acesWei = new Decimal(raw.abs().toString());
@@ -484,7 +483,7 @@ export class TokenMetricsService {
     }
 
     const volumeAces = totalAces.toNumber();
-    return { volumeAces, volumeUsd: volumeAces * acesUsdPrice, isClPool };
+    return { volumeAces, volumeUsd: volumeAces * acesUsdPrice, isClPool: isSlipstream };
   }
 }
 
