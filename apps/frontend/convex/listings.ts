@@ -37,14 +37,16 @@ const listingValidator = {
 export const getBySymbol = query({
   args: { symbol: v.string() },
   handler: async (ctx, args) => {
-    const normalizedSymbol = args.symbol.toLowerCase();
-    
-    // Find all listings and filter by case-insensitive symbol match
-    const allListings = await ctx.db.query('listings').collect();
-    const listing = allListings.find(
-      (l) => l.symbol.toLowerCase() === normalizedSymbol
-    );
-    
+    const trimmed = args.symbol.trim();
+    if (!trimmed) return null;
+
+    // Symbols are stored uppercase — normalise input and use the index directly
+    const upperSymbol = trimmed.toUpperCase();
+    const listing = await ctx.db
+      .query('listings')
+      .withIndex('by_symbol', (q) => q.eq('symbol', upperSymbol))
+      .first();
+
     if (!listing) return null;
 
     // Join with token (if listingId matches)

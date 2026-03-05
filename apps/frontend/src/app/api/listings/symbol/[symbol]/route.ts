@@ -31,7 +31,9 @@ export async function GET(
     // Fetch listing from Convex (includes token and owner joins)
     const { fetchQuery } = await import('convex/nextjs');
     const { api } = await import('../../../../../../convex/_generated/api');
-    const result = await fetchQuery(api.listings.getBySymbol, { symbol });
+    const result = await fetchQuery(api.listings.getBySymbol, {
+      symbol: symbol.trim(),
+    });
 
     if (!result || !result.listing) {
       return NextResponse.json(
@@ -58,28 +60,7 @@ export async function GET(
       }
     }
 
-    // Get holder count if token exists (optional - can be slow)
-    let holderCount: number | null = null;
-
-    // Try to get from Prisma token if it exists (for holder count)
-    if (token?.contractAddress) {
-      try {
-        const prismaToken = await prisma.token.findUnique({
-          where: { contractAddress: token.contractAddress.toLowerCase() },
-          select: {
-            currentPrice: true,
-            currentPriceACES: true,
-            volume24h: true,
-            phase: true,
-            priceSource: true,
-            dexLiveAt: true,
-          },
-        });
-        // Holder count can be added later if needed
-      } catch (err) {
-        console.warn('[Listings] Failed to fetch Prisma token data:', err);
-      }
-    }
+    const holderCount: number | null = null;
 
     // Prepare response (similar to backend format)
     const responseListing = {
