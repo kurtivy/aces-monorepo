@@ -65,22 +65,30 @@ function getStaticUpcomingAssets(): UpcomingAsset[] {
   return [banksyAsset, featuredAsset, apAsset].filter(Boolean) as UpcomingAsset[];
 }
 
+/** Pin Luigi Pikachu #296/XY-P first (for now). */
+function isLuigiPikachu(doc: { title?: string; id?: string }): boolean {
+  const t = doc.title ?? '';
+  const id = doc.id ?? '';
+  return t.includes('Luigi Pikachu') || t.includes('#296') || id.includes('296');
+}
+
 function DropsContentWithConvex() {
   const convexItems = useQuery(api.canvasItems.listForDrops);
   const upcomingAssets = useMemo<UpcomingAsset[]>(() => {
-    const assets =
-      convexItems != null && convexItems.length > 0
-        ? convexItems.map(convexDocToUpcomingAsset)
-        : getStaticUpcomingAssets();
+    if (convexItems == null || convexItems.length === 0) {
+      return getStaticUpcomingAssets();
+    }
 
-    return [...assets].sort((a, b) => {
-      // Upcoming (comingSoon) items first, live items last
-      if (a.comingSoon !== b.comingSoon) return a.comingSoon ? -1 : 1;
-      // Within upcoming: soonest date first; within live: most recent date first
-      const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
-      const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
-      return a.comingSoon ? dateA - dateB : dateB - dateA;
+    // Sort by _creationTime descending (newest first), pin Luigi Pikachu to front
+    const sorted = [...convexItems].sort((a, b) => {
+      if (isLuigiPikachu(a) && !isLuigiPikachu(b)) return -1;
+      if (!isLuigiPikachu(a) && isLuigiPikachu(b)) return 1;
+      const timeA = a._creationTime ?? 0;
+      const timeB = b._creationTime ?? 0;
+      return timeB - timeA;
     });
+
+    return sorted.map(convexDocToUpcomingAsset);
   }, [convexItems]);
   return <DropsPageInner upcomingAssets={upcomingAssets} />;
 }
