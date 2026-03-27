@@ -33,8 +33,8 @@ Real-world asset tokenization platform on Base. Users speculate on RWA sale pric
 | **GeckoTerminal** | OHLCV chart data for pools that have a `geckoPoolAddress` configured |
 | **Chainlink** | ETH/USD price feed (`0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70`) |
 | **Privy** | Wallet connection and authentication |
-| **Alchemy** | Optional RPC for on-chain metrics syncer and trade backfill |
-| **Public RPCs** | Client-side reads via fallback pool: `mainnet.base.org`, `publicnode.com`, `blockpi.network`, `tenderly.co`, `1rpc.io`. **Dev only** — replace with a dedicated RPC provider (Alchemy, QuickNode, etc.) before production. Public endpoints have aggressive rate limits and no SLA. |
+| **QuickNode** | RPC provider for on-chain metrics syncer, trade backfill, and client-side reads (via `VITE_QUICKNODE_BASE_URL`) |
+| **Public RPCs** | Client-side fallback pool: `mainnet.base.org`, `publicnode.com`, `tenderly.co`, `1rpc.io`. **Dev only** — QuickNode is the primary RPC in production. Public endpoints have aggressive rate limits and no SLA. |
 
 ## Running the App
 
@@ -57,8 +57,12 @@ CONVEX_DEPLOYMENT=dev:<your-deployment>
 # Privy app ID (optional — leave empty until auth is needed)
 VITE_PRIVY_APP_ID=
 
-# Alchemy RPC (optional — used by on-chain metrics cron)
-ALCHEMY_BASE_URL=https://base-mainnet.g.alchemy.com/v2/<your-key>
+# QuickNode Base Mainnet RPC (client-side reads)
+VITE_QUICKNODE_BASE_URL=https://your-endpoint.base.quiknode.pro/your-key
+
+# Server-side (set in Convex dashboard):
+# QUICKNODE_BASE_URL=https://your-endpoint.base.quiknode.pro/your-key
+# QUICKNODE_WS_URL=wss://your-endpoint.base.quiknode.pro/your-key
 ```
 
 ### Install

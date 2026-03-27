@@ -2,8 +2,7 @@
 
 /**
  * Trade syncer — fetches swap activity from Aerodrome pools via
- * eth_getLogs (standard JSON-RPC, 60 CU on Alchemy vs 120 CU for
- * alchemy_getAssetTransfers).
+ * eth_getLogs (standard JSON-RPC). Uses QuickNode as the RPC provider.
  *
  * Uses two batched eth_getLogs calls across ALL pools (not per-pool),
  * filtering by the ERC20 Transfer event signature. Transfers are then
@@ -34,9 +33,9 @@ const TRANSFER_TOPIC =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
 /**
- * Max block range per eth_getLogs query. Alchemy's free tier on Base
- * caps at 10 blocks per request. Normal 3-minute polling (~90 blocks)
- * needs ~9 chunks, which completes quickly.
+ * Max block range per eth_getLogs query. QuickNode caps at 10 blocks
+ * per request on Base. Normal 3-minute polling (~90 blocks) needs
+ * ~9 chunks, which completes quickly.
  */
 const MAX_BLOCK_RANGE = 10;
 
@@ -175,9 +174,9 @@ const POOL_BY_ADDRESS = new Map(
 export const syncTrades = internalAction({
   args: {},
   handler: async (ctx) => {
-    const rpcUrl = process.env.ALCHEMY_BASE_URL;
+    const rpcUrl = process.env.QUICKNODE_BASE_URL;
     if (!rpcUrl) {
-      console.error("tradeSyncer: ALCHEMY_BASE_URL not set, skipping");
+      console.error("tradeSyncer: QUICKNODE_BASE_URL not set, skipping");
       return;
     }
 
@@ -204,7 +203,7 @@ export const syncTrades = internalAction({
     const startBlock = cursor !== null ? cursor + 1 : 0;
 
     /**
-     * Chunk the block range to stay within Alchemy's per-query limit.
+     * Chunk the block range to stay within QuickNode's per-query limit.
      * For normal 3-minute polling (~90 blocks), this is ~9 chunks.
      */
     let totalSwaps = 0;
@@ -395,11 +394,14 @@ export const syncTrades = internalAction({
 });
 
 // ── Fast backfill via alchemy_getAssetTransfers ──────────────
+// NOTE: alchemy_getAssetTransfers is an Alchemy-proprietary method.
+// This backfill path will NOT work with QuickNode. Use backfillPool
+// (eth_getLogs based) instead, which works with any standard RPC.
 
 /**
  * Fast backfill for a single pool's trades using Alchemy's Transfers API.
- * Fetches ALL ERC20 transfers for the pool address in a few paginated calls
- * instead of scanning block-by-block.
+ * WARNING: This uses the Alchemy-proprietary alchemy_getAssetTransfers
+ * method and will not work with QuickNode. Use backfillPool instead.
  *
  * Run from the Convex dashboard:  { symbol: "PIKACHU" }
  *
@@ -408,9 +410,9 @@ export const syncTrades = internalAction({
 export const backfillTrades = internalAction({
   args: { symbol: v.string() },
   handler: async (ctx, { symbol }) => {
-    const rpcUrl = process.env.ALCHEMY_BASE_URL;
+    const rpcUrl = process.env.QUICKNODE_BASE_URL;
     if (!rpcUrl) {
-      console.error("backfillTrades: ALCHEMY_BASE_URL not set");
+      console.error("backfillTrades: QUICKNODE_BASE_URL not set");
       return;
     }
 
@@ -562,15 +564,15 @@ export const backfillTrades = internalAction({
 // ── Legacy backfill (disabled — use backfillTrades instead) ──
 
 /**
- * Block range per backfill query. Alchemy free tier on Base
- * caps eth_getLogs at 10 blocks per request.
+ * Block range per backfill query. QuickNode on Base caps
+ * eth_getLogs at 10 blocks per request.
  */
 const BACKFILL_BLOCK_RANGE = 10;
 
 /**
- * Delay between chunks to stay under Alchemy's 330 CU/s rate limit.
- * Each chunk = 2 eth_getLogs × 60 CU = 120 CU. At 400ms spacing
- * that's ~300 CU/s, safely under the limit.
+ * Delay between chunks to pace RPC requests and avoid rate limits.
+ * Each chunk = 2 eth_getLogs calls. At 400ms spacing the throughput
+ * stays comfortably under QuickNode's rate limits.
  */
 const BACKFILL_PACE_MS = 400;
 
@@ -619,8 +621,8 @@ async function fetchLogsWithRetry(
 
 /**
  * Resumable, self-scheduling backfill for a single pool's trades.
- * Uses Alchemy (ALCHEMY_BASE_URL) with 10-block chunks and pacing
- * to stay under the free tier's 330 CU/s rate limit.
+ * Uses QuickNode (QUICKNODE_BASE_URL) with 10-block chunks and pacing
+ * to stay under RPC rate limits.
  *
  * Trigger once from the Convex dashboard — it self-schedules
  * continuations every 60s until caught up. Cancel anytime from
@@ -641,9 +643,9 @@ export const backfillPool = internalAction({
     days: v.number(),
   },
   handler: async (ctx, { symbol, days }) => {
-    const rpcUrl = process.env.ALCHEMY_BASE_URL;
+    const rpcUrl = process.env.QUICKNODE_BASE_URL;
     if (!rpcUrl) {
-      console.error("backfillPool: ALCHEMY_BASE_URL not set");
+      console.error("backfillPool: QUICKNODE_BASE_URL not set");
       return;
     }
 
@@ -884,7 +886,7 @@ export const backfillPool = internalAction({
         blockNumber: chunkEnd,
       });
 
-      // Pace to stay under Alchemy's 330 CU/s rate limit
+      // Pace to stay under QuickNode's rate limit
       await new Promise((r) => setTimeout(r, BACKFILL_PACE_MS));
     }
 

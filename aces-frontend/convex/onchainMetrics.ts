@@ -23,9 +23,9 @@ import { RWA_TOKENS, isTokenLive } from "./tokenData";
 
 // ── Constants ────────────────────────────────────────────────
 
-/** Alchemy RPC for reliability, falls back to Base public RPC */
+/** QuickNode RPC for reliability, falls back to Base public RPC */
 const BASE_RPC =
-  process.env.ALCHEMY_BASE_URL || "https://mainnet.base.org";
+  process.env.QUICKNODE_BASE_URL || "https://mainnet.base.org";
 
 /** Chainlink ETH/USD price feed on Base Mainnet (8 decimals) */
 const CHAINLINK_ETH_USD =
