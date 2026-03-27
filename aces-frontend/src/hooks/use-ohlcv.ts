@@ -5,7 +5,26 @@ import {
   fetchPoolAddress,
   fetchOhlcv,
   type Timeframe,
+  type OhlcvCandle,
 } from "~/lib/gecko-terminal";
+
+/**
+ * Enforce candle continuity: open[i] = close[i-1].
+ * Prevents vertical gaps between candles.
+ * From pumpbot chart realism postmortem: enforce in data, not renderer.
+ */
+function enforceContinuity(candles: OhlcvCandle[]): OhlcvCandle[] {
+  if (candles.length <= 1) return candles;
+  return candles.map((candle, i) => {
+    if (i === 0) return candle;
+    const prevClose = candles[i - 1].close;
+    const adjusted = { ...candle, open: prevClose };
+    // Ensure high/low still encompass the adjusted open
+    adjusted.high = Math.max(adjusted.high, adjusted.open, adjusted.close);
+    adjusted.low = Math.min(adjusted.low, adjusted.open, adjusted.close);
+    return adjusted;
+  });
+}
 
 /**
  * Two-source OHLCV hook:
@@ -60,7 +79,7 @@ export function useOhlcv(
   const convexLoading = useConvexFallback && convexCandles === undefined;
 
   return {
-    candles,
+    candles: enforceContinuity(candles),
     isLoading: geckoLoading || convexLoading,
     isError: (!geckoPoolAddress && poolQuery.isError) || geckoQuery.isError,
     hasPool: poolAddress != null || (convexCandles !== undefined && convexCandles.length > 0),
