@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "serve dist -s -l 3000",
     "dev": "concurrently -n vite,convex -c blue,magenta \"vite dev\" \"convex dev\"",
     "dev:vite": "vite dev",
     "build": "tsc && vite build",
@@ -33,6 +34,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.3.0",
+    "serve": "^14.2.0",
     "viem": "^2.31.7",
     "wagmi": "^2.15.6"
   },

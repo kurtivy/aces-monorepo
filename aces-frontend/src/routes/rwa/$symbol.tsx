@@ -10,6 +10,7 @@ import { ImageGallery } from "~/components/rwa/image-gallery";
 import { SwapBox } from "~/components/rwa/swap-box";
 import { TradeHistory } from "~/components/rwa/trade-history";
 import { ChartSection } from "~/components/rwa/chart-section";
+import { ErrorBoundary } from "~/components/error-boundary";
 
 export const Route = createFileRoute("/rwa/$symbol")({
   component: RwaPage,
@@ -81,9 +82,12 @@ function RwaPage() {
 
           {/* Right content — 2-col grid for chart/gallery + trades/swap */}
           <div className="order-1 min-w-0 xl:order-none xl:flex-1 xl:self-start grid grid-cols-1 gap-5 xl:grid-cols-[2fr_1.2fr] xl:gap-x-6">
-            {/* Chart — row 1, col 1. Height driven by chart component internals. */}
+            {/* Chart — row 1, col 1. Height driven by chart component internals.
+                Wrapped in ErrorBoundary so a chart crash doesn't take down the whole page. */}
             <div className="order-1 min-w-0 xl:order-none">
-              <ChartSection tokenSymbol={token.symbol} isLive={isLive} tokenAddress={token.contractAddress} geckoPoolAddress={token.geckoPoolAddress} />
+              <ErrorBoundary>
+                <ChartSection tokenSymbol={token.symbol} isLive={isLive} tokenAddress={token.contractAddress} geckoPoolAddress={token.geckoPoolAddress} />
+              </ErrorBoundary>
             </div>
 
             {/* Image Gallery — row 1, col 2. First on mobile (order-1). */}
@@ -96,16 +100,19 @@ function RwaPage() {
               <TradeHistory tokenSymbol={token.symbol} tokenAddress={token.contractAddress} />
             </div>
 
-            {/* Swap — row 2, col 2. Mobile order-2: right after gallery. */}
+            {/* Swap — row 2, col 2. Mobile order-2: right after gallery.
+                Wrapped in ErrorBoundary so a swap error doesn't break the rest of the page. */}
             <div className="order-2 xl:order-none xl:self-start">
-              <SwapBox
-                tokenSymbol={token.symbol}
-                tokenAddress={token.contractAddress}
-                tokenDecimals={token.decimals ?? 18}
-                dexPool={token.dexPool}
-                isLive={isLive}
-                liveMetrics={liveMetrics ?? undefined}
-              />
+              <ErrorBoundary>
+                <SwapBox
+                  tokenSymbol={token.symbol}
+                  tokenAddress={token.contractAddress}
+                  tokenDecimals={token.decimals ?? 18}
+                  dexPool={token.dexPool}
+                  isLive={isLive}
+                  liveMetrics={liveMetrics ?? undefined}
+                />
+              </ErrorBoundary>
             </div>
           </div>
         </div>

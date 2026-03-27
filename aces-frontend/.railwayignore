@@ -1,0 +1,6 @@
+# Keep the Railway deploy artifact small by excluding
+# files that are not needed at build or runtime.
+node_modules
+.git
+*.md
+docs/
