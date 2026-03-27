@@ -12,10 +12,12 @@ import type {
   CustomSeriesOptions,
   CustomData,
   CustomSeriesPricePlotValues,
+  CustomSeriesWhitespaceData,
   PaneRendererCustomData,
-  BitmapCoordinatesRenderingScope,
   Time,
 } from "lightweight-charts";
+// BitmapCoordinatesRenderingScope lives in fancy-canvas (LWC's rendering dep)
+import type { BitmapCoordinatesRenderingScope } from "fancy-canvas";
 
 // ── Data shape: standard OHLC fields on top of CustomData ──
 export interface FullWidthCandleData extends CustomData {
@@ -149,8 +151,8 @@ export class FullWidthCandleSeries
     return this._renderer;
   }
 
-  /** Whitespace detection: if close is missing, treat as gap */
-  isWhitespace(data: FullWidthCandleData): boolean {
+  /** Whitespace detection: if close is missing, treat as gap (type predicate required by LWC v5) */
+  isWhitespace(data: FullWidthCandleData | CustomSeriesWhitespaceData<Time>): data is CustomSeriesWhitespaceData<Time> {
     return (data as any).close === undefined;
   }
 

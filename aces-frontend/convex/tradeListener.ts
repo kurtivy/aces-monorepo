@@ -145,9 +145,10 @@ export const listen = internalAction({
       if (!rwaLog || !acesLog) return;
 
       // Identify which pool this trade belongs to
+      // Cast to `0x${string}` for Map lookup compatibility
       const pool =
-        POOL_BY_ADDRESS.get(rwaLog.from.toLowerCase()) ||
-        POOL_BY_ADDRESS.get(rwaLog.to.toLowerCase());
+        POOL_BY_ADDRESS.get(rwaLog.from.toLowerCase() as `0x${string}`) ||
+        POOL_BY_ADDRESS.get(rwaLog.to.toLowerCase() as `0x${string}`);
       if (!pool) return;
 
       // Determine trade direction:
@@ -170,7 +171,8 @@ export const listen = internalAction({
       }
 
       // Insert trade via internal mutation (deduplicates by txHash)
-      await ctx.runMutation(internal.tradeListener.insertTrade, {
+      // Cast needed: tradeListener types aren't in codegen until `convex dev` runs
+      await ctx.runMutation((internal as any).tradeListener.insertTrade, {
         txHash,
         tokenAddress: pool.tokenAddress,
         tradeType,
@@ -195,8 +197,9 @@ export const listen = internalAction({
           const txHash = log.transactionHash;
           if (!txHash) continue;
 
-          const from = log.args.from?.toLowerCase() ?? "";
-          const to = log.args.to?.toLowerCase() ?? "";
+          // Cast to `0x${string}` — viem requires branded hex types for address params
+          const from = (log.args.from?.toLowerCase() ?? "") as `0x${string}`;
+          const to = (log.args.to?.toLowerCase() ?? "") as `0x${string}`;
 
           // Only buffer events that involve a pool address (swap legs).
           // This filters out regular wallet-to-wallet transfers.

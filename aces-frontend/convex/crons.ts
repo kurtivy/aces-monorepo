@@ -16,7 +16,8 @@ const crons = cronJobs();
 crons.interval(
   "real-time trade listener",
   { minutes: 9 },
-  internal.tradeListener.listen,
+  // Cast needed: tradeListener types aren't in codegen until `convex dev` runs
+  (internal as any).tradeListener.listen,
 );
 
 /** Backup sync — catches any trades missed by the WebSocket listener */
