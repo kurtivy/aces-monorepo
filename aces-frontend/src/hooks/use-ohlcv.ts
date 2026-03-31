@@ -28,22 +28,37 @@ function enforceContinuity(candles: OhlcvCandle[]): OhlcvCandle[] {
 
 /**
  * Two-source OHLCV hook:
- * 1. Primary: GeckoTerminal (free, no infra, covers most V2 pools)
- * 2. Fallback: Convex trade data (self-hosted, covers CL pools GeckoTerminal doesn't index)
+ * 1. Primary: Convex trade data (real-time WebSocket push, no polling)
+ * 2. Fallback: GeckoTerminal (free API, covers gaps when Convex has no data yet)
  *
- * GeckoTerminal is tried first. If it returns zero candles, the hook
- * falls back to computing OHLCV from our own synced trade history.
+ * Convex is preferred because it gives us instant updates via WebSocket
+ * subscription — no polling needed. GeckoTerminal is only used when
+ * Convex has zero candles (e.g. before backfill completes).
  */
 export function useOhlcv(
   tokenAddress: string | undefined,
   timeframe: Timeframe,
   geckoPoolAddress?: string,
 ) {
-  // ── Source 1: GeckoTerminal ────────────────────────────
+  // ── Source 1 (primary): Convex trade data ──────────────
+  // Real-time WebSocket subscription — updates push instantly when
+  // new trades land via the tradeListener or tradeSyncer.
+  const convexCandles = useConvexQuery(
+    api.ohlcv.fromTrades,
+    tokenAddress ? { tokenAddress, timeframe } : "skip",
+  );
+
+  // ── Source 2 (fallback): GeckoTerminal ─────────────────
+  // Only fetched when Convex has resolved but returned zero candles.
+  // This covers the cold-start case before historical backfill runs.
+  const convexResolved = convexCandles !== undefined;
+  const needGeckoFallback = convexResolved && convexCandles.length === 0;
+
   const poolQuery = useTanstackQuery({
     queryKey: ["gecko-pool", tokenAddress],
     queryFn: () => fetchPoolAddress(tokenAddress!),
-    enabled: !!tokenAddress && !geckoPoolAddress,
+    // Only look up the pool if we actually need GeckoTerminal data
+    enabled: needGeckoFallback && !!tokenAddress && !geckoPoolAddress,
     staleTime: Infinity,
   });
 
@@ -52,37 +67,31 @@ export function useOhlcv(
   const geckoQuery = useTanstackQuery({
     queryKey: ["gecko-ohlcv", poolAddress, timeframe],
     queryFn: () => fetchOhlcv(poolAddress!, timeframe),
-    enabled: !!poolAddress,
+    // Only fetch OHLCV if we need the fallback AND have a pool address
+    enabled: needGeckoFallback && !!poolAddress,
     staleTime: 30_000,
     gcTime: 15 * 60_000,
   });
 
-  // ── Source 2: Convex trade data (fallback) ─────────────
-  // Always runs so Convex can push reactive updates over websocket.
-  // Only used when GeckoTerminal returns empty.
-  const convexCandles = useConvexQuery(
-    api.ohlcv.fromTrades,
-    tokenAddress ? { tokenAddress, timeframe } : "skip",
-  );
-
-  // ── Merge: prefer GeckoTerminal, fall back to Convex ──
+  // ── Merge: prefer Convex, fall back to GeckoTerminal ───
   const geckoCandles = geckoQuery.data ?? [];
-  const geckoResolved = geckoPoolAddress
-    ? geckoQuery.isFetched
-    : poolQuery.isFetched && (poolAddress ? geckoQuery.isFetched : true);
+  const candles = convexCandles && convexCandles.length > 0
+    ? convexCandles
+    : geckoCandles;
 
-  // Use Convex candles when GeckoTerminal has resolved but returned nothing
-  const useConvexFallback = geckoResolved && geckoCandles.length === 0;
-  const candles = useConvexFallback ? (convexCandles ?? []) : geckoCandles;
-
-  const geckoLoading = (!geckoPoolAddress && poolQuery.isLoading) || geckoQuery.isLoading;
-  const convexLoading = useConvexFallback && convexCandles === undefined;
+  const convexLoading = !convexResolved;
+  const geckoLoading = needGeckoFallback && (
+    (!geckoPoolAddress && poolQuery.isLoading) || geckoQuery.isLoading
+  );
 
   return {
     candles: enforceContinuity(candles),
-    isLoading: geckoLoading || convexLoading,
-    isError: (!geckoPoolAddress && poolQuery.isError) || geckoQuery.isError,
-    hasPool: poolAddress != null || (convexCandles !== undefined && convexCandles.length > 0),
-    poolResolved: geckoPoolAddress ? true : poolQuery.isFetched,
+    isLoading: convexLoading || geckoLoading,
+    isError: needGeckoFallback && (
+      (!geckoPoolAddress && poolQuery.isError) || geckoQuery.isError
+    ),
+    hasPool: (convexCandles && convexCandles.length > 0) ||
+      poolAddress != null,
+    poolResolved: true, // Convex always resolves immediately
   };
 }

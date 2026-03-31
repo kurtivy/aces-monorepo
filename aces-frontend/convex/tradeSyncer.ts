@@ -11,7 +11,7 @@
  * Runs as a Convex cron every 3 minutes.
  */
 
-import { internalAction } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { createPublicClient, http } from "viem";
@@ -637,7 +637,9 @@ async function fetchLogsWithRetry(
  *
  * Safe to run multiple times — trades are deduplicated by txHash.
  */
-export const backfillPool = internalAction({
+// Public action so it can be triggered via `npx convex run` CLI.
+// Safe: idempotent, deduplicated by txHash, read-only RPC calls + inserts.
+export const backfillPool = action({
   args: {
     symbol: v.string(),
     days: v.number(),
@@ -716,7 +718,7 @@ export const backfillPool = internalAction({
         );
         await ctx.scheduler.runAfter(
           BACKFILL_RESCHEDULE_DELAY_MS,
-          internal.tradeSyncer.backfillPool,
+          (internal as any).tradeSyncer.backfillPool,
           { symbol, days },
         );
         return;
@@ -757,7 +759,7 @@ export const backfillPool = internalAction({
         );
         await ctx.scheduler.runAfter(
           BACKFILL_RESCHEDULE_DELAY_MS,
-          internal.tradeSyncer.backfillPool,
+          (internal as any).tradeSyncer.backfillPool,
           { symbol, days },
         );
         return;
@@ -790,7 +792,7 @@ export const backfillPool = internalAction({
         );
         await ctx.scheduler.runAfter(
           BACKFILL_RESCHEDULE_DELAY_MS,
-          internal.tradeSyncer.backfillPool,
+          (internal as any).tradeSyncer.backfillPool,
           { symbol, days },
         );
         return;

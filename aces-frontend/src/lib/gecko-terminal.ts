@@ -14,18 +14,28 @@ export interface OhlcvCandle {
   volume: number;
 }
 
-// Sub-hourly timeframes (1m/5m/15m) removed — GeckoTerminal only retains
-// a short window of minute-level data, so sparse tokens return 1-2 candles
-// even though hourly/daily data has full history.
-export type Timeframe = "1h" | "4h" | "1d";
+// All supported chart timeframes. Sub-minute (1s, 10s) and 1m are only
+// available from Convex trade data — GeckoTerminal doesn't support them.
+// The GeckoTerminal fallback maps these to the closest available period.
+export type Timeframe = "1s" | "10s" | "1m" | "1h" | "4h" | "1d";
 
+/**
+ * GeckoTerminal OHLCV config per timeframe.
+ * Sub-minute timeframes (1s, 10s, 1m) are Convex-only — when GeckoTerminal
+ * is used as fallback, they map to the "minute" period with aggregate=1.
+ * GeckoTerminal only retains a short window of minute data, so these may
+ * return few candles — the Convex primary source is much better for them.
+ */
 const TIMEFRAME_CONFIG: Record<
   Timeframe,
-  { period: "hour" | "day"; aggregate: number; limit: number }
+  { period: "minute" | "hour" | "day"; aggregate: number; limit: number }
 > = {
-  "1h": { period: "hour", aggregate: 1, limit: 1000 },  // ~42 days — high limit for sparse tokens
-  "4h": { period: "hour", aggregate: 4, limit: 180 },   // ~30 days
-  "1d": { period: "day", aggregate: 1, limit: 365 },    // ~1 year
+  "1s":  { period: "minute", aggregate: 1, limit: 60 },    // Gecko fallback: 1m candles (best available)
+  "10s": { period: "minute", aggregate: 1, limit: 60 },    // Gecko fallback: 1m candles
+  "1m":  { period: "minute", aggregate: 1, limit: 1000 },  // Gecko: actual 1m candles
+  "1h":  { period: "hour",   aggregate: 1, limit: 1000 },  // ~42 days
+  "4h":  { period: "hour",   aggregate: 4, limit: 180 },   // ~30 days
+  "1d":  { period: "day",    aggregate: 1, limit: 365 },   // ~1 year
 };
 
 /**

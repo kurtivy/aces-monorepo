@@ -4,7 +4,8 @@ import { useOhlcv } from "~/hooks/use-ohlcv";
 import { LightweightChart } from "./lightweight-chart";
 import type { Timeframe } from "~/lib/gecko-terminal";
 
-const TIMEFRAMES: Timeframe[] = ["1h", "4h", "1d"];
+/** All available chart timeframes — sub-minute from Convex, hourly+ from either source */
+const TIMEFRAMES: Timeframe[] = ["1s", "10s", "1m", "1h", "4h", "1d"];
 
 interface ChartSectionProps {
   tokenSymbol: string;

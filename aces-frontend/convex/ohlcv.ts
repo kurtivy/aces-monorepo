@@ -13,16 +13,26 @@ import { v } from "convex/values";
 
 /** Bucket size in seconds for each supported timeframe */
 const BUCKET_SECONDS: Record<string, number> = {
-  "1h": 3600,
-  "4h": 14400,
-  "1d": 86400,
+  "1s": 1,        // 1-second candles (tick-level)
+  "10s": 10,      // 10-second candles
+  "1m": 60,       // 1-minute candles
+  "1h": 3600,     // 1-hour candles
+  "4h": 14400,    // 4-hour candles
+  "1d": 86400,    // 1-day candles
 };
 
-/** How far back to look for each timeframe (matches GeckoTerminal limits) */
+/**
+ * How far back to look for each timeframe.
+ * Sub-minute timeframes use a short lookback to keep queries fast.
+ * Larger timeframes use longer windows for chart context.
+ */
 const LOOKBACK_SECONDS: Record<string, number> = {
-  "1h": 1000 * 3600, // ~42 days
-  "4h": 180 * 14400, // ~30 days
-  "1d": 365 * 86400, // ~1 year
+  "1s": 3600,           // 1 hour of 1s candles (3600 candles max)
+  "10s": 3600 * 6,      // 6 hours of 10s candles (2160 candles max)
+  "1m": 3600 * 24 * 7,  // 7 days of 1m candles (10080 candles max)
+  "1h": 1000 * 3600,    // ~42 days
+  "4h": 180 * 14400,    // ~30 days
+  "1d": 365 * 86400,    // ~1 year
 };
 
 export const fromTrades = query({

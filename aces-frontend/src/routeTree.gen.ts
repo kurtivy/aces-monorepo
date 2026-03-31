@@ -13,11 +13,7 @@ import { Route as StatusRouteImport } from './routes/status'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as DropsRouteImport } from './routes/drops'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as RwaSymbolRouteImport } from './routes/rwa/$symbol'
-import { Route as AdminUnauthorizedRouteImport } from './routes/admin/unauthorized'
-import { Route as AdminTokenLaunchRouteImport } from './routes/admin/token-launch'
-import { Route as AdminLoginRouteImport } from './routes/admin/login'
 
 const StatusRoute = StatusRouteImport.update({
   id: '/status',
@@ -39,29 +35,9 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const RwaSymbolRoute = RwaSymbolRouteImport.update({
   id: '/rwa/$symbol',
   path: '/rwa/$symbol',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUnauthorizedRoute = AdminUnauthorizedRouteImport.update({
-  id: '/admin/unauthorized',
-  path: '/admin/unauthorized',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminTokenLaunchRoute = AdminTokenLaunchRouteImport.update({
-  id: '/admin/token-launch',
-  path: '/admin/token-launch',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminLoginRoute = AdminLoginRouteImport.update({
-  id: '/admin/login',
-  path: '/admin/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -70,22 +46,14 @@ export interface FileRoutesByFullPath {
   '/drops': typeof DropsRoute
   '/portfolio': typeof PortfolioRoute
   '/status': typeof StatusRoute
-  '/admin/login': typeof AdminLoginRoute
-  '/admin/token-launch': typeof AdminTokenLaunchRoute
-  '/admin/unauthorized': typeof AdminUnauthorizedRoute
   '/rwa/$symbol': typeof RwaSymbolRoute
-  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/drops': typeof DropsRoute
   '/portfolio': typeof PortfolioRoute
   '/status': typeof StatusRoute
-  '/admin/login': typeof AdminLoginRoute
-  '/admin/token-launch': typeof AdminTokenLaunchRoute
-  '/admin/unauthorized': typeof AdminUnauthorizedRoute
   '/rwa/$symbol': typeof RwaSymbolRoute
-  '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -93,46 +61,14 @@ export interface FileRoutesById {
   '/drops': typeof DropsRoute
   '/portfolio': typeof PortfolioRoute
   '/status': typeof StatusRoute
-  '/admin/login': typeof AdminLoginRoute
-  '/admin/token-launch': typeof AdminTokenLaunchRoute
-  '/admin/unauthorized': typeof AdminUnauthorizedRoute
   '/rwa/$symbol': typeof RwaSymbolRoute
-  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/drops'
-    | '/portfolio'
-    | '/status'
-    | '/admin/login'
-    | '/admin/token-launch'
-    | '/admin/unauthorized'
-    | '/rwa/$symbol'
-    | '/admin/'
+  fullPaths: '/' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/drops'
-    | '/portfolio'
-    | '/status'
-    | '/admin/login'
-    | '/admin/token-launch'
-    | '/admin/unauthorized'
-    | '/rwa/$symbol'
-    | '/admin'
-  id:
-    | '__root__'
-    | '/'
-    | '/drops'
-    | '/portfolio'
-    | '/status'
-    | '/admin/login'
-    | '/admin/token-launch'
-    | '/admin/unauthorized'
-    | '/rwa/$symbol'
-    | '/admin/'
+  to: '/' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
+  id: '__root__' | '/' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -140,11 +76,7 @@ export interface RootRouteChildren {
   DropsRoute: typeof DropsRoute
   PortfolioRoute: typeof PortfolioRoute
   StatusRoute: typeof StatusRoute
-  AdminLoginRoute: typeof AdminLoginRoute
-  AdminTokenLaunchRoute: typeof AdminTokenLaunchRoute
-  AdminUnauthorizedRoute: typeof AdminUnauthorizedRoute
   RwaSymbolRoute: typeof RwaSymbolRoute
-  AdminIndexRoute: typeof AdminIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -177,39 +109,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/': {
-      id: '/admin/'
-      path: '/admin'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/rwa/$symbol': {
       id: '/rwa/$symbol'
       path: '/rwa/$symbol'
       fullPath: '/rwa/$symbol'
       preLoaderRoute: typeof RwaSymbolRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/unauthorized': {
-      id: '/admin/unauthorized'
-      path: '/admin/unauthorized'
-      fullPath: '/admin/unauthorized'
-      preLoaderRoute: typeof AdminUnauthorizedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/token-launch': {
-      id: '/admin/token-launch'
-      path: '/admin/token-launch'
-      fullPath: '/admin/token-launch'
-      preLoaderRoute: typeof AdminTokenLaunchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/login': {
-      id: '/admin/login'
-      path: '/admin/login'
-      fullPath: '/admin/login'
-      preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -220,11 +124,7 @@ const rootRouteChildren: RootRouteChildren = {
   DropsRoute: DropsRoute,
   PortfolioRoute: PortfolioRoute,
   StatusRoute: StatusRoute,
-  AdminLoginRoute: AdminLoginRoute,
-  AdminTokenLaunchRoute: AdminTokenLaunchRoute,
-  AdminUnauthorizedRoute: AdminUnauthorizedRoute,
   RwaSymbolRoute: RwaSymbolRoute,
-  AdminIndexRoute: AdminIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

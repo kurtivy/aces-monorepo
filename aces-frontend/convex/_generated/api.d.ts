@@ -17,6 +17,8 @@ import type * as tokenData from "../tokenData.js";
 import type * as tokenMetrics from "../tokenMetrics.js";
 import type * as tokenSeedData from "../tokenSeedData.js";
 import type * as tokens from "../tokens.js";
+import type * as tradeInsert from "../tradeInsert.js";
+import type * as tradeListener from "../tradeListener.js";
 import type * as tradeSyncer from "../tradeSyncer.js";
 import type * as trades from "../trades.js";
 
@@ -36,6 +38,8 @@ declare const fullApi: ApiFromModules<{
   tokenMetrics: typeof tokenMetrics;
   tokenSeedData: typeof tokenSeedData;
   tokens: typeof tokens;
+  tradeInsert: typeof tradeInsert;
+  tradeListener: typeof tradeListener;
   tradeSyncer: typeof tradeSyncer;
   trades: typeof trades;
 }>;
