@@ -451,19 +451,36 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
     try {
       console.log('[GoldSky] 💾 Storing to database...');
 
-      await fastify.prisma.acesPriceSnapshot.create({
-        data: {
-          tradeId: tradeId,
-          tokenAddress: tokenAddress.toLowerCase(),
-          acesUsdPrice: acesUsdPrice.toString(),
-          blockNumber: BigInt(blockNumber),
-          timestamp: BigInt(timestamp),
-          source: priceSource,
-        },
-      });
+      await Promise.all([
+        fastify.prisma.acesPriceSnapshot.create({
+          data: {
+            tradeId: tradeId,
+            tokenAddress: tokenAddress.toLowerCase(),
+            acesUsdPrice: acesUsdPrice.toString(),
+            blockNumber: BigInt(blockNumber),
+            timestamp: BigInt(timestamp),
+            source: priceSource,
+          },
+        }),
+        fastify.prisma.dexTrade.create({
+          data: {
+            txHash: tradeId,
+            tokenAddress: tokenAddress.toLowerCase(),
+            timestamp: BigInt(normalizedTimestamp) * BigInt(1000),
+            blockNumber: String(normalizedBlockNumber),
+            isBuy,
+            tokenAmount: tokenAmountWei.toFixed(0),
+            acesAmount: acesAmountWei.toFixed(0),
+            priceInAces: pricePerTokenAces.toNumber(),
+            priceInUsd: priceUsdAtTrade.toNumber(),
+            trader: traderAddress,
+            source: 'goldsky',
+          },
+        }),
+      ]);
 
       const duration = Date.now() - startTime;
-      console.log(`[GoldSky] ✅ Price snapshot stored (${duration}ms)`);
+      console.log(`[GoldSky] ✅ Trade + price snapshot stored (${duration}ms)`);
 
       // 5. Invalidate bonding data cache for this token (RPC-backed data)
       const clearedCount = clearBondingDataCache(tokenAddress);

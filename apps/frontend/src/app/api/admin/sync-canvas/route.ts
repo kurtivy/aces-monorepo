@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const allShowOnCanvas = await prisma.listing.findMany({
-      where: { showOnCanvas: true },
+      where: { showOnCanvas: true } as any,
       orderBy: { createdAt: 'asc' },
     });
 
