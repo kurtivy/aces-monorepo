@@ -88,12 +88,13 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                       The ACES Ratio
                     </h2>
                     <p className="text-lg leading-relaxed">
-                      Every listed asset generates a <strong>Community Reward</strong> pool from
-                      trading fees. The <strong>ACES Ratio</strong> tells you exactly what each
-                      token is worth in rewards—calculated by dividing the total community reward
-                      by the number of tokens held in wallets. The more tokens you hold, the
-                      larger your share of the reward. It&apos;s not about total supply—it&apos;s
-                      about how many tokens are actually in the hands of the community.
+                      When a collectible sells, 10% of the sale goes straight to the{' '}
+                      <strong>Community Reward</strong> pool. The <strong>ACES Ratio</strong>{' '}
+                      tells you exactly what each token is worth in rewards—calculated by
+                      dividing the total community reward by the number of tokens held in
+                      wallets. The more tokens you hold, the larger your share. It&apos;s not
+                      about total supply—it&apos;s about how many tokens are actually in the
+                      hands of the community.
                     </p>
                   </section>
                 </div>
