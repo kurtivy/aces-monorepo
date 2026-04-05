@@ -1,4 +1,4 @@
-export const LIVE_TRADING_SYMBOLS = new Set(['APKAWS', 'RMILLE', 'ILLICIT']);
+export const LIVE_TRADING_SYMBOLS = new Set(['APKAWS', 'RMILLE', 'ILLICIT', 'PIKACHU']);
 
 export const normalizeSymbol = (input?: string | null): string | null => {
   if (!input) {
