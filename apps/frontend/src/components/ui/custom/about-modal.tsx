@@ -58,7 +58,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                     <div className="space-y-4">
                       <div className="flex items-start gap-3">
                         <span className="text-[#D0B264] font-bold text-xl">1.</span>
-                        <p>Sellers unlock liquidity and earn yield from their assets</p>
+                        <p>Sellers unlock liquidity and earn yield from trading fees on their assets</p>
                       </div>
                       <div className="flex items-start gap-3">
                         <span className="text-[#D0B264] font-bold text-xl">2.</span>
@@ -84,12 +84,17 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   </section>
 
                   <section>
+                    <h2 className="text-2xl font-neue-world font-semibold text-[#D0B264] mb-4">
+                      The ACES Ratio
+                    </h2>
                     <p className="text-lg leading-relaxed">
-                      The secret weapon? The <strong>ACES Ratio</strong>—a real-time hype index,
-                      like the P/E ratio for grails. While auction houses see what sold, we see
-                      what&apos;s surging. By separating market value from hype value, the{' '}
-                      <strong>ACES Ratio</strong> converts hype into signal—so you&apos;re not
-                      chasing trends, you&apos;re front-running them.
+                      When a collectible sells, 10% of the sale goes straight to the{' '}
+                      <strong>Community Reward</strong> pool. The <strong>ACES Ratio</strong>{' '}
+                      tells you exactly what each token is worth in rewards—calculated by
+                      dividing the total community reward by the number of tokens held in
+                      wallets. The more tokens you hold, the larger your share. It&apos;s not
+                      about total supply—it&apos;s about how many tokens are actually in the
+                      hands of the community.
                     </p>
                   </section>
                 </div>
