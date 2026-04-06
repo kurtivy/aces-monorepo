@@ -37,31 +37,6 @@ export function TokenHeader({ token, isLive }: TokenHeaderProps) {
         {token.title}
       </h1>
 
-      {/* Asset Value & Community Reward */}
-      {(token.value || token.communityReward) && (
-        <div className="space-y-2 border-t border-golden-beige/8 pt-3">
-          {token.value && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-platinum-grey/50">
-                Asset Value
-              </span>
-              <span className="text-sm font-medium text-golden-beige">
-                {token.value}
-              </span>
-            </div>
-          )}
-          {token.communityReward && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-platinum-grey/50">
-                Community Reward
-              </span>
-              <span className="text-sm font-medium text-golden-beige">
-                {token.communityReward}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -103,12 +78,11 @@ export function TokenMetrics({
 }) {
   // Use live on-chain data when available, fall back to static placeholders
   const marketCap = liveMetrics ? formatUsd(liveMetrics.marketCapUsd) : (token.marketCap ?? "—");
-  const liquidity = liveMetrics ? formatUsd(liveMetrics.liquidityUsd) : (token.liquidity ?? "—");
   const tradeReward = liveMetrics && liveMetrics.tradeRewardPct > 0
     ? `${formatPct(liveMetrics.tradeRewardPct)}%`
     : (token.tradeReward ?? "—");
 
-  // Reward earned = (userBalance / eligibleSupply) × communityReward
+  // Your Reward Share = (userBalance / eligibleSupply) x communityReward
   // Shows "—" when no wallet connected, "$0.00" when user holds no tokens
   let rewardEarned = "—";
   if (userBalance !== undefined && liveMetrics && liveMetrics.eligibleSupply && liveMetrics.eligibleSupply > 0 && liveMetrics.communityRewardUsd && liveMetrics.communityRewardUsd > 0) {
@@ -119,13 +93,18 @@ export function TokenMetrics({
     rewardEarned = "$0.00";
   }
 
-  /* DATA metrics — trading/on-chain stats */
+  /* COMMUNITY REWARD metrics — reward distribution stats for the token */
   /* Aces Ratio and Volume (24H) disabled until meaningful data is available */
   const dataMetrics = [
     // { label: "Aces Ratio", value: token.acesRatio ?? "—" },
-    { label: "Trade Reward", value: tradeReward },
-    { label: "Reward Earned", value: rewardEarned },
-    { label: "Liquidity", value: liquidity },
+    /* Asset Value — total appraised value of the underlying real-world asset */
+    { label: "Asset Value", value: token.value ?? "—" },
+    /* Community Reward — total reward pool distributed to token holders */
+    { label: "Community Reward", value: token.communityReward ?? "—" },
+    /* Reward per Token — percentage of reward earned per token held relative to supply */
+    { label: "Reward per Token", value: tradeReward },
+    /* Your Reward Share — estimated reward payout for the connected wallet's balance */
+    { label: "Your Reward Share", value: rewardEarned },
     // { label: "Volume (24H)", value: token.volume24h ?? "—" },
   ];
 
@@ -146,10 +125,10 @@ export function TokenMetrics({
         </span>
       </div>
 
-      {/* DATA section */}
+      {/* COMMUNITY REWARD section — asset value, reward pool, and per-wallet breakdown */}
       <div>
         <h3 className="mb-2 text-center font-heading text-xs uppercase tracking-widest text-golden-beige/70">
-          Data
+          Community Reward
         </h3>
         <div className="space-y-1">
           {dataMetrics.map((m) => (

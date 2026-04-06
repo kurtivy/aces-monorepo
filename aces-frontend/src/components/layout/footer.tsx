@@ -1,7 +1,7 @@
 /**
  * Site-wide footer for ACES.fun.
- * Columns: Brand + tagline, Product links, Resources (docs, etc.),
- * Community (social links), Contract address.
+ * Columns: Brand + tagline, Product links, Contract address.
+ * Social links are handled by the SocialIcons component in the Brand column.
  * Bottom bar has copyright + Terms/Privacy triggers for the legal modal.
  */
 
@@ -33,8 +33,8 @@ export function Footer() {
         <div className="h-px w-full bg-gradient-to-r from-transparent via-golden-beige/20 to-transparent" />
 
         <div className="px-6 py-12 lg:px-10 lg:py-16">
-          {/* 4-column layout: Brand, Product, Community, Contract */}
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:gap-12">
+          {/* 3-column layout: Brand, Product, Contract */}
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:gap-12">
             {/* Brand — spans 2 cols on mobile for breathing room */}
             <div className="col-span-2 sm:col-span-1">
               {/* Brand logo — Braah One + Spray Letters, matching header */}
@@ -48,9 +48,9 @@ export function Footer() {
                 Real World Asset Tokenization on Base. Trade luxury goods on-chain
                 with verified provenance.
               </p>
-              {/* Social icons under brand column */}
+              {/* Social icons — all community/social links live here */}
               <div className="mt-4">
-                <SocialIcons iconSize={16} />
+                <SocialIcons iconSize={20} />
               </div>
             </div>
 
@@ -97,55 +97,6 @@ export function Footer() {
               </ul>
             </div>
 
-            {/* Community — social platform links */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-platinum-grey/70 mb-4">
-                Community
-              </h4>
-              <ul className="space-y-2.5">
-                <li>
-                  <a
-                    href="https://x.com/acesdotfun"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    X (Twitter)
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://t.me/acesdotfun/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    Telegram
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.instagram.com/acesdotfun/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    Instagram
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.tiktok.com/@acesdotfun"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    TikTok
-                  </a>
-                </li>
-              </ul>
-            </div>
-
             {/* Contract — on-chain links (BaseScan + Aerodrome swap) */}
             <div>
               <h4 className="text-xs font-medium uppercase tracking-wider text-platinum-grey/70 mb-4">
@@ -182,9 +133,6 @@ export function Footer() {
               >
                 Trade $ACES on Aerodrome ↗
               </a>
-              <p className="mt-2 text-xs text-platinum-grey/40">
-                Built on Base (Chain 8453)
-              </p>
             </div>
           </div>
 
