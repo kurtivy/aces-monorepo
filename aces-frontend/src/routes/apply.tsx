@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useWallet } from "~/hooks/use-privy-wallet";
 import { WalletModal } from "~/components/wallet-modal";
+import { X as XIcon, Upload } from "lucide-react";
 
 export const Route = createFileRoute("/apply")({
   component: ApplyPage,
@@ -68,8 +69,9 @@ function ApplyPage() {
  * clean and ensure walletAddress is always defined here.
  */
 function ApplyForm({ walletAddress }: { walletAddress: string }) {
-  // ── Convex mutation for creating submissions ──
+  // ── Convex mutations ──
   const createSubmission = useMutation(api.submissions.create);
+  const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
   // ── Form state ──
   const [title, setTitle] = useState("");
@@ -83,48 +85,82 @@ function ApplyForm({ walletAddress }: { walletAddress: string }) {
   const [provenance, setProvenance] = useState("");
   const [hypeSentence, setHypeSentence] = useState("");
 
-  // Dynamic image URL list — starts with one empty input
-  const [imageUrls, setImageUrls] = useState<string[]>([""]);
+  // ── Contact info ──
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactTelegram, setContactTelegram] = useState("");
+
+  // ── Image file uploads ──
+  // Each entry has a File (for preview) and optional storageId (after upload)
+  const [imageFiles, setImageFiles] = useState<{ file: File; preview: string; storageId?: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Submission lifecycle state ──
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Add another image URL input field */
-  const addImageField = () => {
-    setImageUrls((prev) => [...prev, ""]);
+  /** Handle file selection — add to imageFiles with preview URL */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const newEntries = files.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setImageFiles((prev) => [...prev, ...newEntries]);
+    // Reset the input so the same file can be re-selected if removed
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  /** Update a specific image URL by index */
-  const updateImageUrl = (index: number, newValue: string) => {
-    setImageUrls((prev) => {
-      const updated = [...prev];
-      updated[index] = newValue;
-      return updated;
+  /** Remove an image by index */
+  const removeImage = (index: number) => {
+    setImageFiles((prev) => {
+      // Revoke the object URL to free memory
+      URL.revokeObjectURL(prev[index].preview);
+      return prev.filter((_, i) => i !== index);
     });
   };
 
-  /** Handle form submission — validate, call mutation, handle result */
+  /** Upload all images to Convex storage, returns array of storage IDs */
+  const uploadImages = async (): Promise<string[]> => {
+    const storageIds: string[] = [];
+    for (let i = 0; i < imageFiles.length; i++) {
+      setUploadProgress(`Uploading image ${i + 1} of ${imageFiles.length}...`);
+      // Step 1: Get a signed upload URL from Convex
+      const uploadUrl = await generateUploadUrl();
+      // Step 2: POST the file directly to that URL
+      const result = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": imageFiles[i].file.type },
+        body: imageFiles[i].file,
+      });
+      const { storageId } = await result.json();
+      storageIds.push(storageId);
+    }
+    return storageIds;
+  };
+
+  /** Handle form submission — validate, upload images, call mutation */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Filter out empty image URLs and ensure at least one is provided
-    const filteredImages = imageUrls.filter((url) => url.trim() !== "");
-    if (filteredImages.length === 0) {
-      setError("At least one image URL is required.");
+    if (imageFiles.length === 0) {
+      setError("At least one image is required.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      // Upload images first, then create the submission with storage IDs
+      const storageIds = await uploadImages();
+      setUploadProgress("Creating submission...");
+
       await createSubmission({
         title,
         symbol: symbol.toUpperCase(),
         assetType,
-        // Only pass optional fields if they have content
         brand: brand || undefined,
         value: value || undefined,
         reservePrice: reservePrice || undefined,
@@ -132,19 +168,20 @@ function ApplyForm({ walletAddress }: { walletAddress: string }) {
         details: details || undefined,
         provenance: provenance || undefined,
         hypeSentence: hypeSentence || undefined,
-        imageUrls: filteredImages,
+        imageStorageIds: storageIds,
         walletAddress,
+        contactEmail: contactEmail || undefined,
+        contactTelegram: contactTelegram || undefined,
       });
 
-      // Mutation succeeded — show the success card
       setIsSuccess(true);
     } catch (err) {
-      // Surface the error message to the user
       setError(
         err instanceof Error ? err.message : "Something went wrong. Please try again.",
       );
     } finally {
       setIsSubmitting(false);
+      setUploadProgress("");
     }
   };
 
@@ -347,32 +384,87 @@ function ApplyForm({ walletAddress }: { walletAddress: string }) {
             />
           </div>
 
-          {/* ── Image URLs (dynamic list) ─────────────────────
-               Starts with one input. Users can add more with the
-               "Add another image" button. At least 1 URL required. */}
+          {/* ── Contact Info — email and/or Telegram for follow-up ── */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-platinum-grey/70">
+                Email
+              </label>
+              <input
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                placeholder="you@example.com"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-platinum-grey/70">
+                Telegram
+              </label>
+              <input
+                type="text"
+                value={contactTelegram}
+                onChange={(e) => setContactTelegram(e.target.value)}
+                placeholder="@yourusername"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* ── Image Upload — drag & drop or click to select files ── */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-platinum-grey/70">
-              Image URLs <span className="text-golden-beige/50">*</span>
+              Images <span className="text-golden-beige/50">*</span>
             </label>
-            <div className="space-y-3">
-              {imageUrls.map((url, index) => (
-                <input
-                  key={index}
-                  type="url"
-                  value={url}
-                  onChange={(e) => updateImageUrl(index, e.target.value)}
-                  placeholder={`https://example.com/image-${index + 1}.jpg`}
-                  className={inputClass}
-                />
-              ))}
-            </div>
+
+            {/* Hidden file input — triggered by the upload zone */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            {/* Upload zone — click to browse */}
             <button
               type="button"
-              onClick={addImageField}
-              className="mt-2 text-xs font-medium text-golden-beige/50 transition-colors hover:text-golden-beige/80"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full rounded border-2 border-dashed border-golden-beige/15 bg-card-surface px-6 py-8 text-center transition-colors hover:border-golden-beige/30"
             >
-              + Add another image
+              <Upload className="mx-auto h-8 w-8 text-platinum-grey/30 mb-2" />
+              <p className="text-sm text-platinum-grey/50">
+                Click to upload images
+              </p>
+              <p className="text-xs text-platinum-grey/30 mt-1">
+                JPG, PNG, WebP — max 10MB each
+              </p>
             </button>
+
+            {/* Image preview grid */}
+            {imageFiles.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
+                {imageFiles.map((entry, index) => (
+                  <div key={index} className="relative group aspect-square rounded overflow-hidden border border-golden-beige/10">
+                    <img
+                      src={entry.preview}
+                      alt={`Upload ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                    {/* Remove button — appears on hover */}
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-deep-charcoal/80 text-platinum-grey/60 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── Error message — shown below the form fields ── */}
@@ -388,7 +480,7 @@ function ApplyForm({ walletAddress }: { walletAddress: string }) {
             disabled={isSubmitting}
             className="w-full rounded bg-golden-beige px-8 py-3.5 text-sm font-medium text-deep-charcoal transition-all hover:bg-highlight-gold hover:shadow-gold-glow disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? "Submitting..." : "Submit for Review"}
+            {isSubmitting ? (uploadProgress || "Submitting...") : "Submit for Review"}
           </button>
         </form>
       </div>

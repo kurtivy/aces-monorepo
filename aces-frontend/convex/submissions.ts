@@ -35,11 +35,13 @@ export const create = mutation({
     provenance: v.optional(v.string()),
     hypeSentence: v.optional(v.string()),
 
-    // ── Media — at least one image URL expected by the form ──
-    imageUrls: v.array(v.string()),
+    // ── Media — Convex storage IDs from file uploads ──
+    imageStorageIds: v.array(v.string()),
 
-    // ── Submitter identity ──
+    // ── Submitter identity + contact ──
     walletAddress: v.string(),
+    contactEmail: v.optional(v.string()),
+    contactTelegram: v.optional(v.string()),
   },
 
   handler: async (ctx, args) => {
@@ -94,8 +96,9 @@ export const create = mutation({
       reservePrice: args.reservePrice,
       hypeSentence: args.hypeSentence,
 
-      // imageUrls from the form maps to imageGallery in the schema
-      imageGallery: args.imageUrls,
+      // Storage IDs from file uploads — stored as strings in imageGallery.
+      // Admin can resolve these to URLs via ctx.storage.getUrl() later.
+      imageGallery: args.imageStorageIds,
 
       // Submission lifecycle fields
       status: "PENDING",

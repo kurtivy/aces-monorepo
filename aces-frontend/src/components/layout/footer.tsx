@@ -38,25 +38,25 @@ export function Footer() {
             {/* Brand section — logo, tagline, social icons */}
             <div>
               {/* Brand logo — Braah One + Spray Letters, matching header */}
-              <span className="font-braah text-xl text-white tracking-wide">
+              <span className="font-braah text-3xl text-white tracking-wide">
                 ACES.
               </span>
-              <span className="font-spray text-xl text-highlight-gold">
+              <span className="font-spray text-3xl text-highlight-gold">
                 FUN
               </span>
-              <p className="mt-3 text-xs leading-relaxed text-platinum-grey/50">
+              <p className="mt-4 text-sm leading-relaxed text-platinum-grey/50 max-w-md">
                 Real World Asset Tokenization on Base. Trade luxury goods on-chain
                 with verified provenance.
               </p>
-              {/* Social icons — bumped to 24px for better tap targets */}
-              <div className="mt-4">
-                <SocialIcons iconSize={24} />
+              {/* Social icons — 28px for strong visual presence */}
+              <div className="mt-5">
+                <SocialIcons iconSize={28} />
               </div>
             </div>
 
             {/* Contract section — on-chain links (BaseScan + Aerodrome swap) */}
             <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-platinum-grey/70 mb-4">
+              <h4 className="text-sm font-medium uppercase tracking-wider text-platinum-grey/70 mb-4">
                 Contract
               </h4>
               {/* $ACES token address → BaseScan */}
@@ -64,11 +64,11 @@ export function Footer() {
                 href={`https://basescan.org/token/${CONTRACTS.ACES_TOKEN}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-sm border border-golden-beige/10 bg-golden-beige/5 px-3 py-1.5 text-xs font-mono text-platinum-grey/70 hover:text-golden-beige transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-sm border border-golden-beige/10 bg-golden-beige/5 px-3.5 py-2 text-sm font-mono text-platinum-grey/70 hover:text-golden-beige transition-colors"
               >
                 {truncateAddress(CONTRACTS.ACES_TOKEN, 6)}
                 <svg
-                  className="h-3 w-3"
+                  className="h-3.5 w-3.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -81,33 +81,35 @@ export function Footer() {
                   />
                 </svg>
               </a>
-              {/* Deep-link to Aerodrome with ACES pre-loaded as swap target */}
-              <a
-                href={`https://aerodrome.finance/swap?from=eth&to=${CONTRACTS.ACES_TOKEN}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-xs text-platinum-grey/50 hover:text-golden-beige transition-colors"
-              >
-                Trade $ACES on Aerodrome ↗
-              </a>
+              {/* Aerodrome swap link — stacked below the contract address */}
+              <div className="mt-3">
+                <a
+                  href={`https://aerodrome.finance/swap?from=eth&to=${CONTRACTS.ACES_TOKEN}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-platinum-grey/50 hover:text-golden-beige transition-colors"
+                >
+                  Trade $ACES on Aerodrome ↗
+                </a>
+              </div>
             </div>
           </div>
 
           {/* Bottom bar — copyright + legal links */}
           <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-golden-beige/8 pt-8 sm:flex-row">
-            <p className="text-xs text-platinum-grey/40">
+            <p className="text-sm text-platinum-grey/40">
               &copy; {new Date().getFullYear()} ACES.fun. All rights reserved.
             </p>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5">
               <button
                 onClick={openTerms}
-                className="text-xs text-platinum-grey/40 hover:text-platinum-grey/75 transition-colors"
+                className="text-sm text-platinum-grey/40 hover:text-platinum-grey/75 transition-colors"
               >
                 Terms
               </button>
               <button
                 onClick={openPrivacy}
-                className="text-xs text-platinum-grey/40 hover:text-platinum-grey/75 transition-colors"
+                className="text-sm text-platinum-grey/40 hover:text-platinum-grey/75 transition-colors"
               >
                 Privacy
               </button>
