@@ -28,7 +28,7 @@ function HomePage() {
       <MarqueeSection />
       {/* StatsBar removed — hardcoded numbers weren't accurate */}
       <HowItWorksSection />
-      <CtaSection />
+      {/* CtaSection removed — duplicated hero CTAs */}
     </div>
   );
 }
