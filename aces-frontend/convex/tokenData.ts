@@ -106,7 +106,7 @@ export const RWA_TOKENS: RwaTokenData[] = [
     value: "$110,000",
     communityReward: "$10,000",
     brand: "Pokémon TCG",
-    hype: "Placeholder — update with real hype blurb",
+    hype: "A grail-tier PSA 10 Luigi Pikachu 296/XY-P, hand-signed by illustrator Kouki Saitou — one of the most culturally iconic Pokémon variants ever produced. Now financialized on-chain with a live auction running in parallel.",
   },
   {
     symbol: "ILLICIT",
@@ -142,7 +142,7 @@ A rare double-monkey mic drop from two eras of graffiti culture — the monkey t
     value: "$150,000",
     communityReward: "$50,000",
     brand: "Banksy",
-    hype: "Placeholder — update with real hype blurb",
+    hype: "A true 1/1 illicit collaboration between Banksy and Dave The Chimp — born from East London's guerrilla gallery era. Two monkeys, two eras of graffiti culture, one irreproducible canvas. The monkey that said 'f**k off' twice.",
   },
   {
     symbol: "RMILLE",
@@ -171,7 +171,7 @@ Designed for everyday wear yet crafted with the precision of a racing machine, t
     value: "$288,000",
     communityReward: "$20,000",
     brand: "Richard Mille",
-    hype: "Placeholder — update with real hype blurb",
+    hype: "One of the thinnest automatic movements Richard Mille has ever produced, housed in solid gold. The RM 67-01 sits at the intersection of everyday wearability and investment-grade haute horology — rising demand among global collectors makes it a standout.",
   },
   {
     symbol: "APKAWS",

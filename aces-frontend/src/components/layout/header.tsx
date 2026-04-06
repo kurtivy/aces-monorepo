@@ -30,6 +30,15 @@ export function Header() {
         <nav className="hidden items-center gap-6 md:flex">
           <NavLink to="/drops">Drops</NavLink>
           <NavLink to="/portfolio">Portfolio</NavLink>
+          {/* External docs link — opens in new tab */}
+          <a
+            href="https://docs.aces.fun"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-platinum-grey/75 transition-colors hover:text-golden-beige"
+          >
+            Docs
+          </a>
           <WalletButton />
         </nav>
 
@@ -56,6 +65,15 @@ export function Header() {
             <nav className="flex flex-col gap-1 px-6 py-4">
               <MobileNavLink to="/drops">Drops</MobileNavLink>
               <MobileNavLink to="/portfolio">Portfolio</MobileNavLink>
+              {/* External docs link in mobile menu */}
+              <a
+                href="https://docs.aces.fun"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block rounded-sm px-3 py-2.5 text-sm text-platinum-grey/75 transition-colors hover:bg-golden-beige/5 hover:text-golden-beige"
+              >
+                Docs ↗
+              </a>
               <div className="mt-3 border-t border-golden-beige/8 pt-4">
                 <WalletButton />
               </div>
