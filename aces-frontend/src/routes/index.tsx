@@ -26,7 +26,7 @@ function HomePage() {
     <div className="bg-deep-charcoal">
       <HeroSection />
       <MarqueeSection />
-      <StatsBar />
+      {/* StatsBar removed — hardcoded numbers weren't accurate */}
       <HowItWorksSection />
       <CtaSection />
     </div>
@@ -403,28 +403,7 @@ function HowItWorksSection() {
           ))}
         </div>
 
-        {/* Tech stack tags — builds credibility with specific technology callouts */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.3, ease }}
-          className="mt-14 flex flex-wrap items-center gap-3 border-t border-golden-beige/6 pt-8"
-        >
-          {[
-            "Base Mainnet",
-            "Aerodrome DEX",
-            "ERC-20 Tokens",
-            "Verified Provenance",
-          ].map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-golden-beige/8 bg-golden-beige/[0.03] px-4 py-1.5 font-mono text-[11px] text-platinum-grey/50"
-            >
-              {tag}
-            </span>
-          ))}
-        </motion.div>
+        {/* Tech stack tags removed — too generic, cluttered the section */}
       </div>
     </section>
   );
