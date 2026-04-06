@@ -75,12 +75,10 @@ export function AssetDetails({ description, provenance, links }: AssetDetailsPro
   // Bundle props for the hasContent check
   const props: AssetDetailsProps = { description, provenance, links };
 
-  // Filter to sections that actually have content to show
-  const visibleSections = SECTIONS.filter((s) => s.hasContent(props));
-
+  // Always show all 3 sections — even empty ones signal what's possible
   return (
     <div className="rounded bg-card-surface glow-border-hover card-glow overflow-hidden">
-      {visibleSections.map((section, idx) => {
+      {SECTIONS.map((section, idx) => {
         const isOpen = openSection === section.id;
 
         return (
@@ -128,29 +126,40 @@ export function AssetDetails({ description, provenance, links }: AssetDetailsPro
                     </p>
                   )}
 
-                  {section.id === "provenance" && provenance && (
-                    <p className="text-sm leading-relaxed text-platinum-grey/75 whitespace-pre-line">
-                      {provenance}
-                    </p>
+                  {section.id === "provenance" && (
+                    provenance ? (
+                      <p className="text-sm leading-relaxed text-platinum-grey/75 whitespace-pre-line">
+                        {provenance}
+                      </p>
+                    ) : (
+                      <p className="text-sm italic text-platinum-grey/30">
+                        No provenance information available yet.
+                      </p>
+                    )
                   )}
 
-                  {section.id === "links" && links && links.length > 0 && (
-                    <ul className="space-y-2">
-                      {links.map((link) => (
-                        <li key={link.url}>
-                          {/* External link with golden-beige hover + icon */}
-                          <a
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                          >
-                            {link.label}
-                            <ExternalLink size={13} className="opacity-60" />
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
+                  {section.id === "links" && (
+                    links && links.length > 0 ? (
+                      <ul className="space-y-2">
+                        {links.map((link) => (
+                          <li key={link.url}>
+                            <a
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
+                            >
+                              {link.label}
+                              <ExternalLink size={13} className="opacity-60" />
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm italic text-platinum-grey/30">
+                        No links provided yet.
+                      </p>
+                    )
                   )}
                 </div>
               </div>
