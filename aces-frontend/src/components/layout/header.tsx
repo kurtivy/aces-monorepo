@@ -18,12 +18,14 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-golden-beige/10 bg-deep-charcoal/95 backdrop-blur-sm">
       <div className="flex h-16 items-center justify-between px-6 lg:px-10">
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2">
-          <span className="font-heading text-2xl text-golden-beige">
-            ACES
+        {/* Logo — Braah One for "ACES." + Spray Letters for "FUN" (matches original brand) */}
+        <Link to="/" className="flex items-baseline gap-0">
+          <span className="font-braah text-2xl text-white tracking-wide">
+            ACES.
           </span>
-          <span className="text-xs text-platinum-grey/75">.fun</span>
+          <span className="font-spray text-2xl text-highlight-gold">
+            FUN
+          </span>
         </Link>
 
         {/* Desktop Navigation */}

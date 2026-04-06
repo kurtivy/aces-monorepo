@@ -37,10 +37,13 @@ export function Footer() {
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:gap-12">
             {/* Brand — spans 2 cols on mobile for breathing room */}
             <div className="col-span-2 sm:col-span-1">
-              <span className="font-heading text-xl text-golden-beige">
-                ACES
+              {/* Brand logo — Braah One + Spray Letters, matching header */}
+              <span className="font-braah text-xl text-white tracking-wide">
+                ACES.
               </span>
-              <span className="text-xs text-platinum-grey/50">.fun</span>
+              <span className="font-spray text-xl text-highlight-gold">
+                FUN
+              </span>
               <p className="mt-3 text-xs leading-relaxed text-platinum-grey/50">
                 Real World Asset Tokenization on Base. Trade luxury goods on-chain
                 with verified provenance.

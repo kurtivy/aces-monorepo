@@ -1,21 +1,83 @@
 @import "tailwindcss";
 
+/* ── @font-face: Custom ACES typefaces ──
+   Loaded from /public/fonts/ — these are the brand fonts
+   from the original ACES.fun production site. */
+
+@font-face {
+  font-family: "NeueWorld";
+  src: url("/fonts/NeueWorld-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "NeueWorld";
+  src: url("/fonts/NeueWorld-ExtendedBold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "NeueWorld";
+  src: url("/fonts/NeueWorld-Ultrabold.otf") format("opentype");
+  font-weight: 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Proxima Nova";
+  src: url("/fonts/ProximaNova-Light.otf") format("opentype");
+  font-weight: 300;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Proxima Nova";
+  src: url("/fonts/ProximaNova-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Proxima Nova";
+  src: url("/fonts/ProximaNova-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "BraahOne";
+  src: url("/fonts/BraahOne-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Spray Letters";
+  src: url("/fonts/Spray-Letters.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+
 /* ── ACES.fun Custom Theme ── */
 
 @theme {
-  /* Colors */
-  --color-deep-charcoal: #0A0A0A;
+  /* Colors — matched to old production site palette */
+  --color-deep-charcoal: #231F20;
   --color-card-surface: #161616;
-  --color-golden-beige: #D4B96A;
-  --color-deep-emerald: #22805A;
-  --color-platinum-grey: #E6E7D9;
+  --color-golden-beige: #D0B284;
+  --color-deep-emerald: #184D37;
+  --color-platinum-grey: #DCDDCC;
   --color-highlight-gold: #D7BF75;
   --color-antique-bronze: #928357;
 
-  /* Font families */
-  --font-heading: "Instrument Serif", serif;
-  --font-body: "Instrument Sans", sans-serif;
+  /* Font families — original ACES brand fonts */
+  --font-heading: "NeueWorld", serif;
+  --font-body: "Proxima Nova", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
+  --font-braah: "BraahOne", sans-serif;
+  --font-spray: "Spray Letters", cursive;
 
   /* Shadows */
   --shadow-gold-glow: 0 0 20px rgba(208, 178, 100, 0.5);
