@@ -227,8 +227,9 @@ function ApplyForm({ walletAddress }: { walletAddress: string }) {
             Apply to List Your Asset
           </h1>
           <p className="mt-3 text-platinum-grey/60">
-            Submit your collectible for review. Once approved, it will be listed
-            on ACES.fun for trading.
+            Submit your collectible for review. If approved for next steps, we
+            will contact you via email or Telegram. Please provide as much
+            information as you can proving ownership and estimated value.
           </p>
         </div>
 
