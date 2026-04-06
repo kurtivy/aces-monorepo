@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "~/lib/utils";
 
 interface ImageGalleryProps {
@@ -13,14 +14,50 @@ export function ImageGallery({ images, title }: ImageGalleryProps) {
 
   return (
     <div className="space-y-3">
-      {/* Main image */}
-      <div className="relative aspect-[4/3] overflow-hidden rounded border border-golden-beige/10 bg-card-surface glow-border-hover card-glow">
+      {/* Main image — no fixed aspect ratio; image determines its own height.
+          `group` class enables child arrow buttons to show on hover. */}
+      <div className="group relative w-full overflow-hidden rounded border border-golden-beige/10 bg-card-surface glow-border-hover card-glow">
         <img
           src={images[activeIndex]}
           alt={`${title} - Image ${activeIndex + 1}`}
-          className="h-full w-full object-cover"
+          className="w-full object-contain bg-card-surface"
         />
-        {/* Image counter */}
+
+        {/* Left arrow — previous image.
+            Appears on hover; disabled + dimmed when at first image. */}
+        <button
+          onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
+          disabled={activeIndex === 0}
+          aria-label="Previous image"
+          className={cn(
+            "absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-deep-charcoal/60 backdrop-blur-sm",
+            "opacity-0 group-hover:opacity-100 transition-opacity",
+            activeIndex === 0
+              ? "opacity-30 group-hover:opacity-30 cursor-not-allowed text-platinum-grey/50"
+              : "hover:bg-deep-charcoal/80 text-platinum-grey/80",
+          )}
+        >
+          <ChevronLeft size={20} />
+        </button>
+
+        {/* Right arrow — next image.
+            Appears on hover; disabled + dimmed when at last image. */}
+        <button
+          onClick={() => setActiveIndex((i) => Math.min(images.length - 1, i + 1))}
+          disabled={activeIndex === images.length - 1}
+          aria-label="Next image"
+          className={cn(
+            "absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-deep-charcoal/60 backdrop-blur-sm",
+            "opacity-0 group-hover:opacity-100 transition-opacity",
+            activeIndex === images.length - 1
+              ? "opacity-30 group-hover:opacity-30 cursor-not-allowed text-platinum-grey/50"
+              : "hover:bg-deep-charcoal/80 text-platinum-grey/80",
+          )}
+        >
+          <ChevronRight size={20} />
+        </button>
+
+        {/* Image counter badge — bottom-right overlay */}
         {images.length > 1 && (
           <div className="absolute bottom-3 right-3 rounded-full bg-deep-charcoal/80 px-3 py-1 text-xs text-platinum-grey/75 backdrop-blur-sm">
             {activeIndex + 1} / {images.length}

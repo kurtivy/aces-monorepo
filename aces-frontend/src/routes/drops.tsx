@@ -25,6 +25,20 @@ function DropsPage() {
 
       {/* Grid */}
       <section className="px-6 pb-20 lg:px-10">
+        {/* Apply-to-list banner — subtle CTA above the grid encouraging
+            asset owners to submit their collectibles for listing */}
+        <div className="mb-6 flex items-center justify-between rounded border border-golden-beige/10 bg-card-surface px-5 py-3">
+          <p className="text-sm text-platinum-grey/60">
+            Own a collectible? List it on ACES.fun.
+          </p>
+          <Link
+            to="/apply"
+            className="text-sm font-medium text-golden-beige hover:text-highlight-gold transition-colors"
+          >
+            Apply to List &rarr;
+          </Link>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 2xl:grid-cols-4">
           {RWA_TOKENS.map((asset) => (
             <DropCard key={asset.symbol} asset={asset} />

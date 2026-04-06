@@ -1,12 +1,11 @@
 /**
  * Site-wide footer for ACES.fun.
- * Columns: Brand + tagline, Product links, Contract address.
- * Social links are handled by the SocialIcons component in the Brand column.
+ * Two-section flex layout: Brand + tagline on the left, Contract links on the right.
+ * Social links are handled by the SocialIcons component in the Brand section.
  * Bottom bar has copyright + Terms/Privacy triggers for the legal modal.
  */
 
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { CONTRACTS } from "~/lib/contracts/addresses";
 import { truncateAddress } from "~/lib/utils";
 import { SocialIcons } from "~/components/ui/social-icons";
@@ -33,10 +32,11 @@ export function Footer() {
         <div className="h-px w-full bg-gradient-to-r from-transparent via-golden-beige/20 to-transparent" />
 
         <div className="px-6 py-12 lg:px-10 lg:py-16">
-          {/* 3-column layout: Brand, Product, Contract */}
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:gap-12">
-            {/* Brand — spans 2 cols on mobile for breathing room */}
-            <div className="col-span-2 sm:col-span-1">
+          {/* Two-section flex layout: Brand on the left, Contract on the right.
+              Stacks vertically on mobile, side-by-side on sm+. */}
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-8">
+            {/* Brand section — logo, tagline, social icons */}
+            <div>
               {/* Brand logo — Braah One + Spray Letters, matching header */}
               <span className="font-braah text-xl text-white tracking-wide">
                 ACES.
@@ -48,56 +48,13 @@ export function Footer() {
                 Real World Asset Tokenization on Base. Trade luxury goods on-chain
                 with verified provenance.
               </p>
-              {/* Social icons — all community/social links live here */}
+              {/* Social icons — bumped to 24px for better tap targets */}
               <div className="mt-4">
-                <SocialIcons iconSize={20} />
+                <SocialIcons iconSize={24} />
               </div>
             </div>
 
-            {/* Product — internal navigation links */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-platinum-grey/70 mb-4">
-                Product
-              </h4>
-              <ul className="space-y-2.5">
-                <li>
-                  <Link
-                    to="/drops"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    Drops
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    to="/portfolio"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    Portfolio
-                  </Link>
-                </li>
-                <li>
-                  <a
-                    href="/#how-it-works"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    How it Works
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://docs.aces.fun"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-platinum-grey/75 hover:text-golden-beige transition-colors"
-                  >
-                    Docs
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            {/* Contract — on-chain links (BaseScan + Aerodrome swap) */}
+            {/* Contract section — on-chain links (BaseScan + Aerodrome swap) */}
             <div>
               <h4 className="text-xs font-medium uppercase tracking-wider text-platinum-grey/70 mb-4">
                 Contract

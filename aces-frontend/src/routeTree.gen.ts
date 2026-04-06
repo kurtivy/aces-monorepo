@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as DropsRouteImport } from './routes/drops'
+import { Route as ApplyRouteImport } from './routes/apply'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RwaSymbolRouteImport } from './routes/rwa/$symbol'
 
@@ -30,6 +31,11 @@ const DropsRoute = DropsRouteImport.update({
   path: '/drops',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApplyRoute = ApplyRouteImport.update({
+  id: '/apply',
+  path: '/apply',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,6 +49,7 @@ const RwaSymbolRoute = RwaSymbolRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/apply': typeof ApplyRoute
   '/drops': typeof DropsRoute
   '/portfolio': typeof PortfolioRoute
   '/status': typeof StatusRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/apply': typeof ApplyRoute
   '/drops': typeof DropsRoute
   '/portfolio': typeof PortfolioRoute
   '/status': typeof StatusRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/apply': typeof ApplyRoute
   '/drops': typeof DropsRoute
   '/portfolio': typeof PortfolioRoute
   '/status': typeof StatusRoute
@@ -65,14 +74,28 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
+  fullPaths:
+    | '/'
+    | '/apply'
+    | '/drops'
+    | '/portfolio'
+    | '/status'
+    | '/rwa/$symbol'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
-  id: '__root__' | '/' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
+  to: '/' | '/apply' | '/drops' | '/portfolio' | '/status' | '/rwa/$symbol'
+  id:
+    | '__root__'
+    | '/'
+    | '/apply'
+    | '/drops'
+    | '/portfolio'
+    | '/status'
+    | '/rwa/$symbol'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApplyRoute: typeof ApplyRoute
   DropsRoute: typeof DropsRoute
   PortfolioRoute: typeof PortfolioRoute
   StatusRoute: typeof StatusRoute
@@ -102,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DropsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/apply': {
+      id: '/apply'
+      path: '/apply'
+      fullPath: '/apply'
+      preLoaderRoute: typeof ApplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -121,6 +151,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApplyRoute: ApplyRoute,
   DropsRoute: DropsRoute,
   PortfolioRoute: PortfolioRoute,
   StatusRoute: StatusRoute,

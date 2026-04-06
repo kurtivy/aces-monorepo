@@ -13,6 +13,7 @@ import type * as crons from "../crons.js";
 import type * as listings from "../listings.js";
 import type * as ohlcv from "../ohlcv.js";
 import type * as onchainMetrics from "../onchainMetrics.js";
+import type * as submissions from "../submissions.js";
 import type * as tokenData from "../tokenData.js";
 import type * as tokenMetrics from "../tokenMetrics.js";
 import type * as tokenSeedData from "../tokenSeedData.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   listings: typeof listings;
   ohlcv: typeof ohlcv;
   onchainMetrics: typeof onchainMetrics;
+  submissions: typeof submissions;
   tokenData: typeof tokenData;
   tokenMetrics: typeof tokenMetrics;
   tokenSeedData: typeof tokenSeedData;

@@ -152,6 +152,18 @@ function HeroSection() {
           >
             How it works
           </a>
+          {/* Apply to List CTA — ghost button matching the "How it works" style,
+              directs asset owners to the submission form */}
+          <Link
+            to="/apply"
+            className={cn(
+              "inline-flex items-center gap-2 rounded border border-golden-beige/12 px-8 py-3.5 text-sm font-medium",
+              "text-golden-beige/50 backdrop-blur-sm",
+              "transition-all hover:border-golden-beige/25 hover:text-golden-beige/80",
+            )}
+          >
+            Apply to List
+          </Link>
         </motion.div>
       </div>
     </section>
@@ -472,6 +484,13 @@ function CtaSection() {
               className="rounded border border-golden-beige/15 px-8 py-3.5 text-sm font-medium text-golden-beige/50 transition-all hover:border-golden-beige/30 hover:text-golden-beige/80"
             >
               View Portfolio
+            </Link>
+            {/* Apply to List CTA — encourages asset owners to submit listings */}
+            <Link
+              to="/apply"
+              className="rounded border border-golden-beige/15 px-8 py-3.5 text-sm font-medium text-golden-beige/50 transition-all hover:border-golden-beige/30 hover:text-golden-beige/80"
+            >
+              Apply to List
             </Link>
           </motion.div>
         </div>

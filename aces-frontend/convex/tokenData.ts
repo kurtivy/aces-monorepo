@@ -66,6 +66,12 @@ export interface RwaTokenData {
   brand?: string;
   /** Hype blurb — narrative about the asset's appeal */
   hype?: string;
+
+  // ── Asset details (accordion sections) ─────────
+  /** Provenance — ownership history, authentication, documentation */
+  provenance?: string;
+  /** Relevant links — seller-provided external resources (articles, websites, auction pages) */
+  links?: { label: string; url: string }[];
 }
 
 /** Whether a token is live for trading. */
@@ -107,6 +113,8 @@ export const RWA_TOKENS: RwaTokenData[] = [
     communityReward: "$10,000",
     brand: "Pokémon TCG",
     hype: "A grail-tier PSA 10 Luigi Pikachu 296/XY-P, hand-signed by illustrator Kouki Saitou — one of the most culturally iconic Pokémon variants ever produced. Now financialized on-chain with a live auction running in parallel.",
+    provenance: "PSA GEM MT 10 certification. Hand-signed by Kouki Saitou (original illustrator). Certificate of authenticity on file.",
+    links: [],
   },
   {
     symbol: "ILLICIT",
@@ -143,6 +151,8 @@ A rare double-monkey mic drop from two eras of graffiti culture — the monkey t
     communityReward: "$50,000",
     brand: "Banksy",
     hype: "A true 1/1 illicit collaboration between Banksy and Dave The Chimp — born from East London's guerrilla gallery era. Two monkeys, two eras of graffiti culture, one irreproducible canvas. The monkey that said 'f**k off' twice.",
+    provenance: undefined,
+    links: [],
   },
   {
     symbol: "RMILLE",
@@ -172,6 +182,8 @@ Designed for everyday wear yet crafted with the precision of a racing machine, t
     communityReward: "$20,000",
     brand: "Richard Mille",
     hype: "One of the thinnest automatic movements Richard Mille has ever produced, housed in solid gold. The RM 67-01 sits at the intersection of everyday wearability and investment-grade haute horology — rising demand among global collectors makes it a standout.",
+    provenance: undefined,
+    links: [],
   },
   {
     symbol: "APKAWS",
@@ -201,6 +213,8 @@ This timepiece is not just a watch; it's a wearable sculpture that pushes the bo
     communityReward: "$40,000",
     brand: "Audemars Piguet x KAWS",
     hype: "Hyped for uniting KAWS's *Companion* art with Audemars Piguet's avant-garde tourbillon design, this watch embodies the fusion of art and horology — now trading over 150% above its 2024 launch price.",
+    provenance: undefined,
+    links: [],
   },
 ];
 

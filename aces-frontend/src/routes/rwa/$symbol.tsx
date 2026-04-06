@@ -6,6 +6,7 @@ import { api } from "../../../convex/_generated/api";
 import { getTokenBySymbol, isTokenLive } from "../../../convex/tokenData";
 import { ERC20_ABI } from "~/lib/contracts/abis";
 import { TokenHeader, TokenMetrics } from "~/components/rwa/token-header";
+import { AssetDetails } from "~/components/rwa/asset-details";
 import { ImageGallery } from "~/components/rwa/image-gallery";
 import { SwapBox } from "~/components/rwa/swap-box";
 import { TradeHistory } from "~/components/rwa/trade-history";
@@ -69,15 +70,12 @@ function RwaPage() {
             <TokenHeader token={token} isLive={isLive} />
             <TokenMetrics token={token} liveMetrics={liveMetrics ?? undefined} userBalance={userBalance} />
 
-            {/* Asset details */}
-            <div className="rounded bg-card-surface glow-border-hover card-glow p-5 space-y-3">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-platinum-grey/70">
-                About this asset
-              </h3>
-              <p className="text-sm leading-relaxed text-platinum-grey/75 whitespace-pre-line">
-                {token.description}
-              </p>
-            </div>
+            {/* Asset details — accordion with About, Provenance, and Links sections */}
+            <AssetDetails
+              description={token.description}
+              provenance={token.provenance}
+              links={token.links}
+            />
           </div>
 
           {/* Right content — 2-col grid for chart/gallery + trades/swap */}
