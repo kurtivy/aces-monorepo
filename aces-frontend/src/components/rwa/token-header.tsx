@@ -78,9 +78,15 @@ export function TokenMetrics({
 }) {
   // Use live on-chain data when available, fall back to static placeholders
   const marketCap = liveMetrics ? formatUsd(liveMetrics.marketCapUsd) : (token.marketCap ?? "—");
-  const tradeReward = liveMetrics && liveMetrics.tradeRewardPct > 0
-    ? `${formatPct(liveMetrics.tradeRewardPct)}%`
-    : (token.tradeReward ?? "—");
+
+  // Reward per Token = communityReward / eligibleSupply
+  // Shows each token's current share of the reward pool as a dollar value.
+  // Note: buying more tokens dilutes this — the value updates in real time.
+  let rewardPerToken = "—";
+  if (liveMetrics && liveMetrics.eligibleSupply && liveMetrics.eligibleSupply > 0 && liveMetrics.communityRewardUsd && liveMetrics.communityRewardUsd > 0) {
+    const perToken = liveMetrics.communityRewardUsd / liveMetrics.eligibleSupply;
+    rewardPerToken = formatUsd(perToken);
+  }
 
   // Your Reward Share = (userBalance / eligibleSupply) x communityReward
   // Shows "—" when no wallet connected, "$0.00" when user holds no tokens
@@ -101,8 +107,8 @@ export function TokenMetrics({
     { label: "Asset Value", value: token.value ?? "—" },
     /* Community Reward — total reward pool distributed to token holders */
     { label: "Community Reward", value: token.communityReward ?? "—" },
-    /* Reward per Token — percentage of reward earned per token held relative to supply */
-    { label: "Reward per Token", value: tradeReward },
+    /* Reward per Token — dollar value of reward per token at current eligible supply */
+    { label: "Reward per Token", value: rewardPerToken },
     /* Your Reward Share — estimated reward payout for the connected wallet's balance */
     { label: "Your Reward Share", value: rewardEarned },
     // { label: "Volume (24H)", value: token.volume24h ?? "—" },
